@@ -18,10 +18,10 @@ static const struct arg args[] = {
 	/*{ wifi_perc, "W: (%3s%% on ", "wlp8s0" },
 	{ wifi_essid, "%s) ", "wlp8s0" },*/
 	/*{ ipv4, "%s | ", "wlp8s0" },*/
-	{ run_command, "V: %4s | ", "amixer sget Master | awk -F\"[][]\" '/%/ { print $2 }' | head -n1" },
+	{ run_command, "v: %4s | ", "amixer sget Master | awk -F\"[][]\" '/%/ { print $2 }' | head -n1" },
 	/*{ battery_state, "%s ", "BAT1" },*/
 	/*{ battery_perc, "%3s%% | ", "BAT1" },*/
-	{ datetime, "%s", "[%a] [%D]%l:%M" },
+	{ datetime, "%s", "[%a] [%D] [%I:%M]" },
 };
 
 /*
