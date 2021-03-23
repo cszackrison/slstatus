@@ -21,8 +21,8 @@ static const struct arg args[] = {
 	{ run_command, "v: %4s | ", "amixer sget Master | awk -F\"[][]\" '/%/ { print $2 }' | head -n1" },
 	/*{ battery_state, "%s ", "BAT1" },*/
 	/*{ battery_perc, "%3s%% | ", "BAT1" },*/
-	{ temp, "[%s°] | ", "/sys/class/thermal/thermal_zone2/temp" },
-	{ datetime, "%s", "[%a] [%D] [%I:%M]" },
+	{ temp, "%s° | ", "/sys/class/thermal/thermal_zone2/temp" },
+	{ datetime, "%s", "%D %a %I:%M" },
 };
 
 /*
