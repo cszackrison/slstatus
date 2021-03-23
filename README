@@ -34,6 +34,8 @@ Requirements
 In order to build slstatus you need the Xlib header files and optionally ALSA
 for volume percentage. PulseAudio is not supported for various reasons.
 
+- I needed `pulseaudio` and `pusleaudio-alsa` in order to get my headphone volume controls working.
+
 
 Installation
 ------------
