@@ -17,12 +17,14 @@ struct arg {
 	const char *(*func)();
 	const char *fmt;
 	const char *args;
+	int hide_unknown;
 };
 
 char *argv0;
 char buf[1024];
 static unsigned short int done;
 static Display *dpy;
+static volatile sig_atomic_t pending_click;
 
 #include "config.h"
 
@@ -32,6 +34,14 @@ terminate(const int signo)
 	(void)signo;
 
 	done = 1;
+}
+
+static void
+click(const int signo, siginfo_t *info, void *context)
+{
+	(void)signo;
+	(void)context;
+	pending_click = info->si_value.sival_int;
 }
 
 static void
@@ -52,7 +62,7 @@ usage(void)
 int
 main(int argc, char *argv[])
 {
-	struct sigaction act;
+	struct sigaction act, clickact;
 	struct timespec start, current, diff, intspec, wait;
 	size_t i, len;
 	int sflag = 0;
@@ -77,6 +87,11 @@ main(int argc, char *argv[])
 	sigaction(SIGINT,  &act, NULL);
 	sigaction(SIGTERM, &act, NULL);
 
+	memset(&clickact, 0, sizeof(clickact));
+	clickact.sa_sigaction = click;
+	clickact.sa_flags = SA_SIGINFO;
+	sigaction(SIGUSR1, &clickact, NULL);
+
 	if (!sflag && !(dpy = XOpenDisplay(NULL))) {
 		fprintf(stderr, "slstatus: cannot open display");
 		return 1;
@@ -85,9 +100,20 @@ main(int argc, char *argv[])
 	while (!done) {
 		clock_gettime(CLOCK_MONOTONIC, &start);
 
+		if (pending_click) {
+			int value = pending_click;
+			pending_click = 0;
+			if ((value >> 8) == 1)
+				volume_click(value & 0xff);
+			else if ((value >> 8) == 2)
+				razer_click("0003:1532:0083.", value & 0xff);
+		}
+
 		status[0] = '\0';
 		for (i = len = 0; i < LEN(args); i++) {
 			const char * res = args[i].func(args[i].args);
+			if (res == NULL && args[i].hide_unknown)
+				continue;
 			res = (res == NULL) ? unknown_str : res;
 			len += snprintf(status + len, sizeof(status) - len,
 			                args[i].fmt, res);

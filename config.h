@@ -18,11 +18,13 @@ static const struct arg args[] = {
 	/*{ wifi_perc, "W: (%3s%% on ", "wlp8s0" },
 	{ wifi_essid, "%s) ", "wlp8s0" },*/
 	/*{ ipv4, "%s | ", "wlp8s0" },*/
-	{ run_command, "v: %4s | ", "amixer sget Master | awk -F\"[][]\" '/%/ { print $2 }' | head -n1" },
+	{ run_command, "\x01󰕾 %4s  ", "amixer sget Master | awk -F\"[][]\" '/%/ { print $2 }' | head -n1", 0 },
+	{ razer_dpi, "\x02󰍽 %s DPI  ", "0003:1532:0083.", 1 },
+	{ razer_battery, "󰁹 %s%%  ", "0003:1532:0083.", 1 },
 	/*{ battery_state, "%s ", "BAT1" },*/
 	/*{ battery_perc, "%3s%% | ", "BAT1" },*/
-	{ temp, "%s° | ", "/sys/class/thermal/thermal_zone2/temp" },
-	{ datetime, "%s", "%D %a %I:%M" },
+	{ temp, "\x03󰔏 %s° | ", "/sys/class/thermal/thermal_zone2/temp", 0 },
+	{ datetime, "%s", "%D %a %I:%M", 0 },
 };
 
 /*

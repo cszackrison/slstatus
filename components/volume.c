@@ -4,6 +4,7 @@
 #include <sys/soundcard.h>
 #include <sys/ioctl.h>
 #include <stdio.h>
+#include <stdlib.h>
 #include <string.h>
 #include <unistd.h>
 
@@ -40,4 +41,13 @@ vol_perc(const char *card)
 	close(afd);
 
 	return bprintf("%d", v & 0xff);
+}
+
+void
+volume_click(int button)
+{
+	if (button == 1)
+		(void)system("amixer -q sset Master 10%+");
+	else if (button == 3)
+		(void)system("amixer -q sset Master 10%-");
 }

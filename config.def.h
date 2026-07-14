@@ -36,6 +36,8 @@ static const char unknown_str[] = "n/a";
  * ram_perc             memory usage in percent         NULL
  * ram_total            total memory size in GB         NULL
  * ram_used             used memory in GB               NULL
+ * razer_battery        Razer mouse battery percentage  HID device prefix
+ * razer_dpi            Razer mouse DPI                 HID device prefix
  * run_command          custom shell command            command
  * swap_free            free swap in GB                 NULL
  * swap_perc            swap usage in percent           NULL

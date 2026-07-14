@@ -47,6 +47,12 @@ const char *ram_perc(void);
 const char *ram_total(void);
 const char *ram_used(void);
 
+/* Razer mouse */
+const char *razer_battery(const char *);
+const char *razer_dpi(const char *);
+int razer_adjust_dpi(const char *, int);
+void razer_click(const char *, int);
+
 /* run_command */
 const char *run_command(const char *);
 
@@ -69,6 +75,7 @@ const char *uid(void);
 
 /* volume */
 const char *vol_perc(const char *);
+void volume_click(int);
 
 /* wifi */
 const char *wifi_perc(const char *);

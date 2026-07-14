@@ -27,6 +27,19 @@ Features
 - Uptime
 - Volume percentage (OSS/ALSA)
 - WiFi signal percentage and ESSID
+- Razer Basilisk X HyperSpeed DPI and battery status
+- Click controls for volume and mouse DPI when used with the clickable-status
+  patch in this dwm configuration
+
+
+Status clicks
+-------------
+- Volume: left click adds 10%, right click subtracts 10% (clamped to 0-100%)
+- Mouse DPI: left click adds 100 DPI, right click subtracts 100 DPI (clamped
+  to 100-16000 DPI)
+
+The mouse component writes the active DPI and its single DPI stage together,
+so the physical DPI button remains locked to the displayed value.
 
 
 Requirements

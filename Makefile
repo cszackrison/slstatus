@@ -18,6 +18,7 @@ COM =\
 	components/load_avg\
 	components/num_files\
 	components/ram\
+	components/razer\
 	components/run_command\
 	components/swap\
 	components/temperature\
