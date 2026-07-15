@@ -38,6 +38,11 @@ const char *keyboard_indicators(void);
 /* load_avg */
 const char *load_avg(const char *);
 
+/* microphone */
+const char *mic_perc(const char *);
+const char *mic_status(const char *);
+void mic_click(int);
+
 /* num_files */
 const char *num_files(const char *);
 
@@ -64,6 +69,7 @@ const char *swap_used(void);
 
 /* temperature */
 const char *temp(const char *);
+const char *temp_fallback(const char *);
 
 /* uptime */
 const char *uptime(void);
@@ -75,6 +81,7 @@ const char *uid(void);
 
 /* volume */
 const char *vol_perc(const char *);
+const char *vol_status(const char *);
 void volume_click(int);
 
 /* wifi */

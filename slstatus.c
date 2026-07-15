@@ -107,6 +107,8 @@ main(int argc, char *argv[])
 				volume_click(value & 0xff);
 			else if ((value >> 8) == 2)
 				razer_click("0003:1532:0083.", value & 0xff);
+			else if ((value >> 8) == 4)
+				mic_click(value & 0xff);
 		}
 
 		status[0] = '\0';
