@@ -28,6 +28,7 @@ Features
 - Volume percentage (OSS/ALSA)
 - WiFi signal percentage and ESSID
 - Razer Basilisk X HyperSpeed DPI and battery status
+- Claude and OpenAI subscription usage remaining
 - Click controls for volume and mouse DPI when used with the clickable-status
   patch in this dwm configuration
 
@@ -70,3 +71,31 @@ Configuration
 -------------
 slstatus can be customized by creating a custom config.h and (re)compiling the
 source code. This keeps it fast, secure and simple.
+
+
+AI subscription usage
+---------------------
+The Claude and OpenAI components display remaining subscription capacity. They
+do not use API keys or make network requests.
+
+OpenAI usage is read from the newest Codex rollout under
+`$CODEX_HOME/sessions` (or `~/.codex/sessions`). Codex writes the same rate-limit
+snapshot used by its own interface after a response. Because the rollout format
+is internal to Codex, an incompatible future format is treated as unavailable.
+
+Claude Code exposes subscription rate limits to its custom status-line command
+but does not persist them in its normal stats cache. Install this project's
+helper and configure it as the Claude Code status line:
+
+    "statusLine": {
+        "type": "command",
+        "command": "/usr/local/libexec/slstatus/claude-usage-cache"
+    }
+
+The helper requires `jq`, preserves the `[user@host directory]` Claude footer,
+and writes only the two percentages and reset times to
+`${XDG_CACHE_HOME:-$HOME/.cache}/slstatus/claude-usage-v1`.
+
+Both components hide missing or expired windows. Values update only when the
+corresponding CLI receives new usage data, so they can remain visible while
+offline until the provider-reported reset time.

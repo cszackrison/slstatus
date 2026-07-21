@@ -12,6 +12,10 @@ static const char unknown_str[] = "n/a";
 /*
  * function             description                     argument
  *
+ * claude_subscription_usage
+ *                      Claude subscription remaining   cache file or NULL
+ * openai_subscription_usage
+ *                      Codex subscription remaining    sessions dir or NULL
  * battery_perc         battery percentage              battery name
  * battery_power        battery power usage             battery name
  * battery_state        battery charging state          battery name

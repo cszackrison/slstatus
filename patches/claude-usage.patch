@@ -1,0 +1,838 @@
+diff --git a/Makefile b/Makefile
+index b461cbc..1bd8900 100644
+--- a/Makefile
++++ b/Makefile
+@@ -6,6 +6,7 @@ include config.mk
+ 
+ REQ = util
+ COM =\
++	components/ai_usage\
+ 	components/battery\
+ 	components/cpu\
+ 	components/datetime\
+@@ -30,6 +31,9 @@ COM =\
+ 
+ all: slstatus
+ 
++test: all
++	sh tests/test_ai_usage.sh
++
+ slstatus: slstatus.o $(COM:=.o) $(REQ:=.o)
+ slstatus.o: slstatus.c slstatus.h arg.h config.h $(REQ:=.h)
+ $(COM:=.o): config.mk $(REQ:=.h)
+@@ -51,7 +55,7 @@ dist:
+ 	mkdir -p "slstatus-$(VERSION)/components"
+ 	cp -R LICENSE Makefile README config.mk config.def.h \
+ 	      arg.h slstatus.c $(COM:=.c) $(REQ:=.c) $(REQ:=.h) \
+-	      slstatus.1 "slstatus-$(VERSION)"
++	      slstatus.1 scripts tests "slstatus-$(VERSION)"
+ 	tar -cf - "slstatus-$(VERSION)" | gzip -c > "slstatus-$(VERSION).tar.gz"
+ 	rm -rf "slstatus-$(VERSION)"
+ 
+@@ -59,10 +63,16 @@ install: all
+ 	mkdir -p "$(DESTDIR)$(PREFIX)/bin"
+ 	cp -f slstatus "$(DESTDIR)$(PREFIX)/bin"
+ 	chmod 755 "$(DESTDIR)$(PREFIX)/bin/slstatus"
++	mkdir -p "$(DESTDIR)$(PREFIX)/libexec/slstatus"
++	cp -f scripts/claude-usage-cache \
++		"$(DESTDIR)$(PREFIX)/libexec/slstatus/claude-usage-cache"
++	chmod 755 \
++		"$(DESTDIR)$(PREFIX)/libexec/slstatus/claude-usage-cache"
+ 	mkdir -p "$(DESTDIR)$(MANPREFIX)/man1"
+ 	cp -f slstatus.1 "$(DESTDIR)$(MANPREFIX)/man1"
+ 	chmod 644 "$(DESTDIR)$(MANPREFIX)/man1/slstatus.1"
+ 
+ uninstall:
+ 	rm -f "$(DESTDIR)$(PREFIX)/bin/slstatus"
++	rm -f "$(DESTDIR)$(PREFIX)/libexec/slstatus/claude-usage-cache"
+ 	rm -f "$(DESTDIR)$(MANPREFIX)/man1/slstatus.1"
+diff --git a/README b/README
+index 21375b4..da3ef4b 100644
+--- a/README
++++ b/README
+@@ -28,6 +28,7 @@ Features
+ - Volume percentage (OSS/ALSA)
+ - WiFi signal percentage and ESSID
+ - Razer Basilisk X HyperSpeed DPI and battery status
++- Claude and OpenAI subscription usage remaining
+ - Click controls for volume and mouse DPI when used with the clickable-status
+   patch in this dwm configuration
+ 
+@@ -70,3 +71,31 @@ Configuration
+ -------------
+ slstatus can be customized by creating a custom config.h and (re)compiling the
+ source code. This keeps it fast, secure and simple.
++
++
++AI subscription usage
++---------------------
++The Claude and OpenAI components display remaining subscription capacity. They
++do not use API keys or make network requests.
++
++OpenAI usage is read from the newest Codex rollout under
++`$CODEX_HOME/sessions` (or `~/.codex/sessions`). Codex writes the same rate-limit
++snapshot used by its own interface after a response. Because the rollout format
++is internal to Codex, an incompatible future format is treated as unavailable.
++
++Claude Code exposes subscription rate limits to its custom status-line command
++but does not persist them in its normal stats cache. Install this project's
++helper and configure it as the Claude Code status line:
++
++    "statusLine": {
++        "type": "command",
++        "command": "/usr/local/libexec/slstatus/claude-usage-cache"
++    }
++
++The helper requires `jq`, preserves the `[user@host directory]` Claude footer,
++and writes only the two percentages and reset times to
++`${XDG_CACHE_HOME:-$HOME/.cache}/slstatus/claude-usage-v1`.
++
++Both components hide missing or expired windows. Values update only when the
++corresponding CLI receives new usage data, so they can remain visible while
++offline until the provider-reported reset time.
+diff --git a/config.def.h b/config.def.h
+index 443de11..46c7667 100644
+--- a/config.def.h
++++ b/config.def.h
+@@ -12,6 +12,10 @@ static const char unknown_str[] = "n/a";
+ /*
+  * function             description                     argument
+  *
++ * claude_subscription_usage
++ *                      Claude subscription remaining   cache file or NULL
++ * openai_subscription_usage
++ *                      Codex subscription remaining    sessions dir or NULL
+  * battery_perc         battery percentage              battery name
+  * battery_power        battery power usage             battery name
+  * battery_state        battery charging state          battery name
+diff --git a/config.h b/config.h
+index 7595ed4..316e5bd 100644
+--- a/config.h
++++ b/config.h
+@@ -13,12 +13,14 @@ static const char unknown_str[] = "n/a";
+ /* output formats */
+ static const struct arg args[] = {
+ 	/* function, format, argument */
++	{ claude_subscription_usage, "| Claude %s ", NULL, 1 },
++	{ openai_subscription_usage, "| OpenAI %s ", NULL, 1 },
+ 	/*{ disk_free, " %.5s GiB | ", "/" },
+ 	{ ipv4, "E: %s | ", "enp9s0" },*/
+ 	/*{ wifi_perc, "W: (%3s%% on ", "wlp8s0" },
+ 	{ wifi_essid, "%s) ", "wlp8s0" },*/
+ 	/*{ ipv4, "%s | ", "wlp8s0" },*/
+-	{ vol_status, "\x01%s  ", NULL, 0 },
++	{ vol_status, "| \x01%s  ", NULL, 0 },
+ 	{ mic_status, "\x04%s  ", NULL, 1 },
+ 	{ razer_dpi, "\x02󰍽 %s DPI  ", "0003:1532:0083.", 1 },
+ 	{ razer_battery, "󰁹 %s%%  ", "0003:1532:0083.", 1 },
+diff --git a/slstatus.h b/slstatus.h
+index 7d327de..25ad658 100644
+--- a/slstatus.h
++++ b/slstatus.h
+@@ -1,5 +1,9 @@
+ /* See LICENSE file for copyright and license details. */
+ 
++/* AI subscription usage */
++const char *claude_subscription_usage(const char *);
++const char *openai_subscription_usage(const char *);
++
+ /* battery */
+ const char *battery_perc(const char *);
+ const char *battery_power(const char *);
+diff --git a/components/ai_usage.c b/components/ai_usage.c
+new file mode 100644
+index 0000000..99de2a6
+--- /dev/null
++++ b/components/ai_usage.c
+@@ -0,0 +1,535 @@
++/* See LICENSE file for copyright and license details. */
++#include <dirent.h>
++#include <errno.h>
++#include <fcntl.h>
++#include <limits.h>
++#include <stdio.h>
++#include <stdlib.h>
++#include <string.h>
++#include <sys/stat.h>
++#include <sys/types.h>
++#include <time.h>
++#include <unistd.h>
++
++#include "../util.h"
++
++#ifndef PATH_MAX
++#define PATH_MAX 4096
++#endif
++
++#define CODEX_RESCAN_SECONDS 60
++#define CODEX_READ_LIMIT (2 * 1024 * 1024)
++
++struct usage_window {
++	double used;
++	time_t resets_at;
++	int present;
++};
++
++struct usage_snapshot {
++	struct usage_window five_hour;
++	struct usage_window weekly;
++};
++
++static struct usage_snapshot codex_usage;
++static char codex_rollout[PATH_MAX];
++static char codex_sessions_root[PATH_MAX];
++static off_t codex_offset;
++static time_t codex_next_scan;
++
++static int
++has_suffix(const char *str, const char *suffix)
++{
++	size_t slen, suffixlen;
++
++	slen = strlen(str);
++	suffixlen = strlen(suffix);
++	return slen >= suffixlen &&
++	       !strcmp(str + slen - suffixlen, suffix);
++}
++
++static int
++path_join(char *dst, size_t size, const char *left, const char *right)
++{
++	int n;
++
++	n = snprintf(dst, size, "%s/%s", left, right);
++	return n >= 0 && (size_t)n < size;
++}
++
++static int
++default_path(char *dst, size_t size, const char *envname,
++             const char *fallback_dir, const char *suffix)
++{
++	const char *base, *home;
++	int n;
++
++	base = getenv(envname);
++	if (base && base[0]) {
++		n = snprintf(dst, size, "%s/%s", base, suffix);
++	} else {
++		home = getenv("HOME");
++		if (!home || !home[0])
++			return 0;
++		n = snprintf(dst, size, "%s/%s/%s", home, fallback_dir, suffix);
++	}
++
++	return n >= 0 && (size_t)n < size;
++}
++
++static const char *
++json_value(const char *text, const char *key)
++{
++	const char *p;
++
++	if (!(p = strstr(text, key)))
++		return NULL;
++	p += strlen(key);
++	while (*p == ' ' || *p == '\t' || *p == '\r')
++		p++;
++	if (*p++ != ':')
++		return NULL;
++	while (*p == ' ' || *p == '\t' || *p == '\r')
++		p++;
++
++	return p;
++}
++
++static int
++json_string(const char *text, const char *key, char *dst, size_t size)
++{
++	const char *p, *end;
++	size_t len;
++
++	if (!(p = json_value(text, key)) || *p++ != '"')
++		return 0;
++	if (!(end = strchr(p, '"')))
++		return 0;
++	len = (size_t)(end - p);
++	if (len >= size)
++		return 0;
++	memcpy(dst, p, len);
++	dst[len] = '\0';
++
++	return 1;
++}
++
++static int
++json_long(const char *text, const char *key, long long *value)
++{
++	const char *p;
++	char *end;
++	long long parsed;
++
++	if (!(p = json_value(text, key)))
++		return 0;
++	errno = 0;
++	parsed = strtoll(p, &end, 10);
++	if (errno || end == p)
++		return 0;
++	*value = parsed;
++
++	return 1;
++}
++
++static int
++json_double(const char *text, const char *key, double *value)
++{
++	const char *p;
++	char *end;
++	double parsed;
++
++	if (!(p = json_value(text, key)))
++		return 0;
++	errno = 0;
++	parsed = strtod(p, &end);
++	if (errno || end == p)
++		return 0;
++	*value = parsed;
++
++	return 1;
++}
++
++static int
++parse_window(const char *rate_limits, const char *key,
++             struct usage_snapshot *snapshot)
++{
++	const char *p, *end;
++	char object[512];
++	long long minutes, resets_at;
++	double used;
++	size_t len;
++	struct usage_window window;
++
++	if (!(p = json_value(rate_limits, key)) || *p != '{')
++		return 0;
++	if (!(end = strchr(p, '}')))
++		return 0;
++	len = (size_t)(end - p + 1);
++	if (len >= sizeof(object))
++		return 0;
++	memcpy(object, p, len);
++	object[len] = '\0';
++
++	if (!json_double(object, "\"used_percent\"", &used) ||
++	    !json_long(object, "\"window_minutes\"", &minutes) ||
++	    !json_long(object, "\"resets_at\"", &resets_at) ||
++	    used < 0.0 || used > 100.0 || resets_at <= 0)
++		return 0;
++
++	window.used = used;
++	window.resets_at = (time_t)resets_at;
++	window.present = 1;
++	if (minutes == 300)
++		snapshot->five_hour = window;
++	else if (minutes == 10080)
++		snapshot->weekly = window;
++	else
++		return 0;
++
++	return 1;
++}
++
++/* Returns 1 for a subscription snapshot, -1 for an explicit null snapshot. */
++static int
++parse_codex_line(char *line, struct usage_snapshot *snapshot)
++{
++	const char *rate_limits;
++	char limit_id[64], plan_type[64];
++	struct usage_snapshot parsed = {0};
++
++	if (!strstr(line, "\"type\":\"token_count\"") &&
++	    !strstr(line, "\"type\": \"token_count\""))
++		return 0;
++	if (!(rate_limits = json_value(line, "\"rate_limits\"")))
++		return 0;
++	if (!strncmp(rate_limits, "null", 4))
++		return -1;
++	if (*rate_limits != '{' ||
++	    !json_string(rate_limits, "\"limit_id\"", limit_id,
++	                 sizeof(limit_id)) || strcmp(limit_id, "codex") ||
++	    !json_string(rate_limits, "\"plan_type\"", plan_type,
++	                 sizeof(plan_type)) || !strcmp(plan_type, "unknown"))
++		return 0;
++
++	parse_window(rate_limits, "\"primary\"", &parsed);
++	parse_window(rate_limits, "\"secondary\"", &parsed);
++	*snapshot = parsed;
++
++	return 1;
++}
++
++static void
++parse_codex_buffer(char *data, size_t len)
++{
++	char *line, *end;
++	int result;
++
++	line = data;
++	while (line < data + len && (end = memchr(line, '\n',
++	       (size_t)(data + len - line)))) {
++		*end = '\0';
++		result = parse_codex_line(line, &codex_usage);
++		if (result < 0)
++			memset(&codex_usage, 0, sizeof(codex_usage));
++		line = end + 1;
++	}
++}
++
++static int
++rollout_is_newer(const struct stat *st, const char *path, time_t best_mtime,
++                 const char *best_path)
++{
++	return st->st_mtime > best_mtime ||
++	       (st->st_mtime == best_mtime && strcmp(path, best_path) > 0);
++}
++
++static void
++scan_rollouts(const char *dir, int depth, char *best, size_t best_size,
++              time_t *best_mtime)
++{
++	struct dirent *entry;
++	struct stat st;
++	char path[PATH_MAX];
++	DIR *dp;
++
++	if (!(dp = opendir(dir)))
++		return;
++	while ((entry = readdir(dp))) {
++		if (!strcmp(entry->d_name, ".") || !strcmp(entry->d_name, "..") ||
++		    !path_join(path, sizeof(path), dir, entry->d_name) ||
++		    stat(path, &st) < 0)
++			continue;
++		if (S_ISDIR(st.st_mode) && depth < 3) {
++			scan_rollouts(path, depth + 1, best, best_size,
++			              best_mtime);
++		} else if (S_ISREG(st.st_mode) &&
++		           !strncmp(entry->d_name, "rollout-", 8) &&
++		           has_suffix(entry->d_name, ".jsonl") &&
++		           rollout_is_newer(&st, path, *best_mtime, best)) {
++			snprintf(best, best_size, "%s", path);
++			*best_mtime = st.st_mtime;
++		}
++	}
++	closedir(dp);
++}
++
++static void
++scan_day(time_t when, char *best, size_t best_size, time_t *best_mtime)
++{
++	struct tm tm;
++	char day[32], path[PATH_MAX];
++
++	if (!localtime_r(&when, &tm) ||
++	    !strftime(day, sizeof(day), "%Y/%m/%d", &tm) ||
++	    !path_join(path, sizeof(path), codex_sessions_root, day))
++		return;
++	scan_rollouts(path, 3, best, best_size, best_mtime);
++}
++
++static void
++select_codex_rollout(int full_scan)
++{
++	struct stat st;
++	char best[PATH_MAX] = "";
++	time_t best_mtime = 0, now;
++
++	if (!full_scan && codex_rollout[0] && !stat(codex_rollout, &st)) {
++		snprintf(best, sizeof(best), "%s", codex_rollout);
++		best_mtime = st.st_mtime;
++	}
++
++	now = time(NULL);
++	if (full_scan || !best[0])
++		scan_rollouts(codex_sessions_root, 0, best, sizeof(best),
++		              &best_mtime);
++	else {
++		scan_day(now, best, sizeof(best), &best_mtime);
++		scan_day(now - 24 * 60 * 60, best, sizeof(best), &best_mtime);
++	}
++
++	if (strcmp(best, codex_rollout)) {
++		snprintf(codex_rollout, sizeof(codex_rollout), "%s", best);
++		codex_offset = 0;
++		memset(&codex_usage, 0, sizeof(codex_usage));
++	}
++	codex_next_scan = now + CODEX_RESCAN_SECONDS;
++}
++
++static void
++read_codex_updates(void)
++{
++	struct stat st;
++	char *data;
++	ssize_t nread;
++	off_t start, last_complete;
++	size_t length, skip;
++	int fd;
++
++	if (!codex_rollout[0] || stat(codex_rollout, &st) < 0)
++		return;
++	if (st.st_size == codex_offset)
++		return;
++
++	start = codex_offset;
++	if (start < 0 || start > st.st_size ||
++	    st.st_size - start > CODEX_READ_LIMIT) {
++		start = st.st_size > CODEX_READ_LIMIT ?
++		        st.st_size - CODEX_READ_LIMIT : 0;
++	}
++	length = (size_t)(st.st_size - start);
++	if (!length || !(data = malloc(length + 1)))
++		return;
++	if ((fd = open(codex_rollout, O_RDONLY)) < 0) {
++		free(data);
++		return;
++	}
++	if (lseek(fd, start, SEEK_SET) < 0 ||
++	    (nread = read(fd, data, length)) <= 0) {
++		close(fd);
++		free(data);
++		return;
++	}
++	close(fd);
++	data[nread] = '\0';
++
++	skip = 0;
++	if (start > 0 && start != codex_offset) {
++		char *newline = memchr(data, '\n', (size_t)nread);
++		if (!newline) {
++			free(data);
++			return;
++		}
++		skip = (size_t)(newline - data + 1);
++	}
++	last_complete = -1;
++	for (ssize_t i = nread - 1; i >= (ssize_t)skip; i--) {
++		if (data[i] == '\n') {
++			last_complete = i;
++			break;
++		}
++	}
++	if (last_complete >= 0) {
++		parse_codex_buffer(data + skip,
++		                   (size_t)last_complete + 1 - skip);
++		codex_offset = start + last_complete + 1;
++	}
++	free(data);
++}
++
++static int
++parse_cache_token(const char *token, double *number)
++{
++	char *end;
++	double value;
++
++	if (!strcmp(token, "-"))
++		return 0;
++	errno = 0;
++	value = strtod(token, &end);
++	if (errno || end == token || *end || value < 0.0 || value > 100.0)
++		return 0;
++	*number = value;
++
++	return 1;
++}
++
++static int
++parse_cache_time(const char *token, time_t *when)
++{
++	char *end;
++	long long value;
++
++	if (!strcmp(token, "-"))
++		return 0;
++	errno = 0;
++	value = strtoll(token, &end, 10);
++	if (errno || end == token || *end || value <= 0)
++		return 0;
++	*when = (time_t)value;
++
++	return 1;
++}
++
++static int
++read_claude_cache(const char *path, struct usage_snapshot *snapshot)
++{
++	char version[8], five_used[32], five_reset[32];
++	char week_used[32], week_reset[32];
++	double used;
++	time_t resets_at;
++	FILE *fp;
++
++	memset(snapshot, 0, sizeof(*snapshot));
++	if (!(fp = fopen(path, "r")))
++		return 0;
++	if (fscanf(fp, "%7s %31s %31s %31s %31s", version, five_used,
++	           five_reset, week_used, week_reset) != 5 ||
++	    strcmp(version, "v1")) {
++		fclose(fp);
++		return 0;
++	}
++	fclose(fp);
++
++	if (parse_cache_token(five_used, &used) &&
++	    parse_cache_time(five_reset, &resets_at)) {
++		snapshot->five_hour.used = used;
++		snapshot->five_hour.resets_at = resets_at;
++		snapshot->five_hour.present = 1;
++	}
++	if (parse_cache_token(week_used, &used) &&
++	    parse_cache_time(week_reset, &resets_at)) {
++		snapshot->weekly.used = used;
++		snapshot->weekly.resets_at = resets_at;
++		snapshot->weekly.present = 1;
++	}
++
++	return snapshot->five_hour.present || snapshot->weekly.present;
++}
++
++static int
++remaining_percent(double used)
++{
++	int remaining;
++
++	remaining = (int)(100.0 - used + 0.5);
++	if (remaining < 0)
++		remaining = 0;
++	else if (remaining > 100)
++		remaining = 100;
++
++	return remaining;
++}
++
++static const char *
++format_usage(struct usage_snapshot *snapshot)
++{
++	time_t now;
++	int five, week;
++
++	now = time(NULL);
++	five = snapshot->five_hour.present &&
++	       snapshot->five_hour.resets_at > now;
++	week = snapshot->weekly.present && snapshot->weekly.resets_at > now;
++	if (five && week)
++		return bprintf("5hr %d%% wk %d%%",
++		               remaining_percent(snapshot->five_hour.used),
++		               remaining_percent(snapshot->weekly.used));
++	if (five)
++		return bprintf("5hr %d%%",
++		               remaining_percent(snapshot->five_hour.used));
++	if (week)
++		return bprintf("wk %d%%",
++		               remaining_percent(snapshot->weekly.used));
++
++	return NULL;
++}
++
++const char *
++claude_subscription_usage(const char *cache_path)
++{
++	char path[PATH_MAX];
++	struct usage_snapshot snapshot;
++
++	if (!cache_path) {
++		if (!default_path(path, sizeof(path), "XDG_CACHE_HOME", ".cache",
++		                  "slstatus/claude-usage-v1"))
++			return NULL;
++		cache_path = path;
++	}
++	if (!read_claude_cache(cache_path, &snapshot))
++		return NULL;
++
++	return format_usage(&snapshot);
++}
++
++const char *
++openai_subscription_usage(const char *sessions_root)
++{
++	char path[PATH_MAX];
++	time_t now;
++
++	if (!sessions_root) {
++		if (!default_path(path, sizeof(path), "CODEX_HOME", ".codex",
++		                  "sessions"))
++			return NULL;
++		sessions_root = path;
++	}
++	if (strcmp(sessions_root, codex_sessions_root)) {
++		snprintf(codex_sessions_root, sizeof(codex_sessions_root), "%s",
++		         sessions_root);
++		codex_rollout[0] = '\0';
++		codex_offset = 0;
++		codex_next_scan = 0;
++		memset(&codex_usage, 0, sizeof(codex_usage));
++	}
++
++	now = time(NULL);
++	if (!codex_rollout[0])
++		select_codex_rollout(1);
++	else if (now >= codex_next_scan)
++		select_codex_rollout(0);
++	read_codex_updates();
++
++	return format_usage(&codex_usage);
++}
+diff --git a/scripts/claude-usage-cache b/scripts/claude-usage-cache
+new file mode 100755
+index 0000000..0d145a5
+--- /dev/null
++++ b/scripts/claude-usage-cache
+@@ -0,0 +1,44 @@
++#!/bin/sh
++
++# Claude Code sends subscription rate limits to status-line commands on stdin.
++# Persist only the two usage windows, then preserve the user's existing footer.
++
++input=$(cat)
++values=$(printf '%s' "$input" | jq -r '
++	[
++		(.rate_limits.five_hour.used_percentage // "-"),
++		(.rate_limits.five_hour.resets_at // "-"),
++		(.rate_limits.seven_day.used_percentage // "-"),
++		(.rate_limits.seven_day.resets_at // "-")
++	] | map(tostring) | @tsv
++' 2>/dev/null)
++
++if [ -n "$values" ]; then
++	tab=$(printf '\t')
++	old_ifs=$IFS
++	IFS=$tab
++	read -r five_used five_reset week_used week_reset <<EOF
++$values
++EOF
++	IFS=$old_ifs
++
++	if [ "$five_used" != "-" ] || [ "$week_used" != "-" ]; then
++		cache_base=${XDG_CACHE_HOME:-"${HOME}/.cache"}
++		cache_dir=$cache_base/slstatus
++		umask 077
++		if mkdir -p "$cache_dir" && chmod 700 "$cache_dir"; then
++			tmp=$(mktemp "$cache_dir/.claude-usage.XXXXXX")
++			if [ -n "$tmp" ]; then
++				printf 'v1\t%s\t%s\t%s\t%s\n' \
++					"$five_used" "$five_reset" \
++					"$week_used" "$week_reset" > "$tmp" &&
++					mv -f "$tmp" "$cache_dir/claude-usage-v1"
++				[ -e "$tmp" ] && rm -f "$tmp"
++			fi
++		fi
++	fi
++fi
++
++host=$(uname -n)
++host=${host%%.*}
++printf '[%s@%s %s]' "$(id -un)" "$host" "$(basename "$(pwd)")"
+diff --git a/tests/ai_usage_probe.c b/tests/ai_usage_probe.c
+new file mode 100644
+index 0000000..ca1dfe4
+--- /dev/null
++++ b/tests/ai_usage_probe.c
+@@ -0,0 +1,25 @@
++#include <stdio.h>
++#include <string.h>
++
++char buf[1024];
++
++const char *claude_subscription_usage(const char *);
++const char *openai_subscription_usage(const char *);
++
++int
++main(int argc, char *argv[])
++{
++	const char *result;
++
++	if (argc != 3)
++		return 2;
++	if (!strcmp(argv[1], "claude"))
++		result = claude_subscription_usage(argv[2]);
++	else if (!strcmp(argv[1], "openai"))
++		result = openai_subscription_usage(argv[2]);
++	else
++		return 2;
++
++	puts(result ? result : "NULL");
++	return 0;
++}
+diff --git a/tests/test_ai_usage.sh b/tests/test_ai_usage.sh
+new file mode 100755
+index 0000000..aabc0b5
+--- /dev/null
++++ b/tests/test_ai_usage.sh
+@@ -0,0 +1,69 @@
++#!/bin/sh
++set -eu
++
++tmp=$(mktemp -d /tmp/slstatus-ai-usage.XXXXXX)
++trap 'rm -rf "$tmp"' EXIT HUP INT TERM
++
++cc -I. -D_DEFAULT_SOURCE -std=c99 -pedantic -Wall -Wextra -Os \
++	-o "$tmp/probe" tests/ai_usage_probe.c components/ai_usage.c util.c
++
++assert_equal() {
++	if [ "$1" != "$2" ]; then
++		printf 'expected: %s\nactual:   %s\n' "$2" "$1" >&2
++		exit 1
++	fi
++}
++
++now=$(date +%s)
++future=$((now + 3600))
++past=$((now - 1))
++
++printf 'v1\t25.4\t%s\t96\t%s\n' "$future" "$future" \
++	> "$tmp/claude"
++assert_equal "$("$tmp/probe" claude "$tmp/claude")" \
++	"5hr 75% wk 4%"
++
++printf 'v1\t25.4\t%s\t96\t%s\n' "$past" "$future" \
++	> "$tmp/claude"
++assert_equal "$("$tmp/probe" claude "$tmp/claude")" "wk 4%"
++
++printf 'not-a-cache\n' > "$tmp/claude"
++assert_equal "$("$tmp/probe" claude "$tmp/claude")" "NULL"
++
++mkdir -p "$tmp/sessions/2026/07/21"
++rollout=$tmp/sessions/2026/07/21/rollout-test.jsonl
++printf '%s\n' \
++	'{"type":"event_msg","payload":{"type":"token_count","rate_limits":{"limit_id":"codex","primary":{"used_percent":14.0,"window_minutes":10080,"resets_at":9999999999},"secondary":null,"plan_type":"pro"}}}' \
++	> "$rollout"
++assert_equal "$("$tmp/probe" openai "$tmp/sessions")" "wk 86%"
++
++printf '%s\n' \
++	'{"type":"event_msg","payload":{"type":"token_count","rate_limits":{"limit_id":"codex","primary":{"used_percent":25.4,"window_minutes":300,"resets_at":9999999999},"secondary":{"used_percent":96,"window_minutes":10080,"resets_at":9999999999},"plan_type":"plus"}}}' \
++	> "$rollout"
++assert_equal "$("$tmp/probe" openai "$tmp/sessions")" \
++	"5hr 75% wk 4%"
++
++printf '%s\n' \
++	'{"type":"event_msg","payload":{"type":"token_count","rate_limits":{"limit_id":"codex_spark","primary":{"used_percent":5,"window_minutes":10080,"resets_at":9999999999},"secondary":null,"plan_type":"pro"}}}' \
++	> "$rollout"
++assert_equal "$("$tmp/probe" openai "$tmp/sessions")" "NULL"
++
++printf '%s\n' \
++	'{"type":"event_msg","payload":{"type":"token_count","rate_limits":null}}' \
++	> "$rollout"
++assert_equal "$("$tmp/probe" openai "$tmp/sessions")" "NULL"
++
++cache_root=$tmp/cache
++output=$(printf '%s\n' \
++	"{\"rate_limits\":{\"five_hour\":{\"used_percentage\":25.4,\"resets_at\":$future},\"seven_day\":{\"used_percentage\":96,\"resets_at\":$future}}}" \
++	| XDG_CACHE_HOME="$cache_root" scripts/claude-usage-cache)
++case $output in
++	"["*"@"*" "*"]") ;;
++	*) printf 'unexpected Claude footer: %s\n' "$output" >&2; exit 1 ;;
++esac
++assert_equal "$("$tmp/probe" claude \
++	"$cache_root/slstatus/claude-usage-v1")" "5hr 75% wk 4%"
++assert_equal "$(stat -c %a "$cache_root/slstatus")" "700"
++assert_equal "$(stat -c %a "$cache_root/slstatus/claude-usage-v1")" "600"
++
++printf 'ai usage tests passed\n'

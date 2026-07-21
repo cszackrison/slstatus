@@ -1,0 +1,4 @@
+# Build outputs
+*.o
+/slstatus
+/slstatus-*.tar.gz

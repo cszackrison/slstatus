@@ -1,0 +1,44 @@
+#!/bin/sh
+
+# Claude Code sends subscription rate limits to status-line commands on stdin.
+# Persist only the two usage windows, then preserve the user's existing footer.
+
+input=$(cat)
+values=$(printf '%s' "$input" | jq -r '
+	[
+		(.rate_limits.five_hour.used_percentage // "-"),
+		(.rate_limits.five_hour.resets_at // "-"),
+		(.rate_limits.seven_day.used_percentage // "-"),
+		(.rate_limits.seven_day.resets_at // "-")
+	] | map(tostring) | @tsv
+' 2>/dev/null)
+
+if [ -n "$values" ]; then
+	tab=$(printf '\t')
+	old_ifs=$IFS
+	IFS=$tab
+	read -r five_used five_reset week_used week_reset <<EOF
+$values
+EOF
+	IFS=$old_ifs
+
+	if [ "$five_used" != "-" ] || [ "$week_used" != "-" ]; then
+		cache_base=${XDG_CACHE_HOME:-"${HOME}/.cache"}
+		cache_dir=$cache_base/slstatus
+		umask 077
+		if mkdir -p "$cache_dir" && chmod 700 "$cache_dir"; then
+			tmp=$(mktemp "$cache_dir/.claude-usage.XXXXXX")
+			if [ -n "$tmp" ]; then
+				printf 'v1\t%s\t%s\t%s\t%s\n' \
+					"$five_used" "$five_reset" \
+					"$week_used" "$week_reset" > "$tmp" &&
+					mv -f "$tmp" "$cache_dir/claude-usage-v1"
+				[ -e "$tmp" ] && rm -f "$tmp"
+			fi
+		fi
+	fi
+fi
+
+host=$(uname -n)
+host=${host%%.*}
+printf '[%s@%s %s]' "$(id -un)" "$host" "$(basename "$(pwd)")"

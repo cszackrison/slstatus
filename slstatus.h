@@ -1,5 +1,9 @@
 /* See LICENSE file for copyright and license details. */
 
+/* AI subscription usage */
+const char *claude_subscription_usage(const char *);
+const char *openai_subscription_usage(const char *);
+
 /* battery */
 const char *battery_perc(const char *);
 const char *battery_power(const char *);
