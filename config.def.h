@@ -16,6 +16,7 @@ static const char unknown_str[] = "n/a";
  *                      Claude subscription remaining   cache file or NULL
  * openai_subscription_usage
  *                      Codex subscription remaining    sessions dir or NULL
+ * herdr_status         Herdr agent state counts        socket path or NULL
  * battery_perc         battery percentage              battery name
  * battery_power        battery power usage             battery name
  * battery_state        battery charging state          battery name

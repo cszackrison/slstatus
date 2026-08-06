@@ -29,6 +29,7 @@ Features
 - WiFi signal percentage and ESSID
 - Razer Basilisk X HyperSpeed DPI and battery status
 - Claude and OpenAI subscription usage remaining
+- Herdr agent states with an animated attention indicator
 - Click controls for volume and mouse DPI when used with the clickable-status
   patch in this dwm configuration
 
@@ -71,6 +72,26 @@ Configuration
 -------------
 slstatus can be customized by creating a custom config.h and (re)compiling the
 source code. This keeps it fast, secure and simple.
+
+
+Herdr agent status
+------------------
+The Herdr component reads the local Unix socket API directly and shows a count
+for each agent state: `!` blocked, `✓` done, `…` working, `○` idle, and `?`
+unknown. Zero counts are omitted.
+
+Blocked and done agents need attention. While either state is present, the
+component alternates `◆` and `◇` on each status refresh without changing the
+width of the text. For example:
+
+    Herdr ◆ !1 ✓1 …2
+    Herdr ◇ !1 ✓1 …2
+
+The component hides itself when Herdr is unavailable or has no detected
+agents. Pass a socket path in `config.h` to override discovery. With a `NULL`
+argument it checks `HERDR_SOCKET_PATH`, then
+`$XDG_CONFIG_HOME/herdr/herdr.sock`, or finally
+`$HOME/.config/herdr/herdr.sock`.
 
 
 AI subscription usage

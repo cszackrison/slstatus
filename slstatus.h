@@ -4,6 +4,9 @@
 const char *claude_subscription_usage(const char *);
 const char *openai_subscription_usage(const char *);
 
+/* Herdr */
+const char *herdr_status(const char *);
+
 /* battery */
 const char *battery_perc(const char *);
 const char *battery_power(const char *);

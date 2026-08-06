@@ -13,6 +13,7 @@ COM =\
 	components/disk\
 	components/entropy\
 	components/hostname\
+	components/herdr\
 	components/ip\
 	components/kernel_release\
 	components/keyboard_indicators\
@@ -33,6 +34,7 @@ all: slstatus
 
 test: all
 	sh tests/test_ai_usage.sh
+	sh tests/test_herdr_status.sh
 
 slstatus: slstatus.o $(COM:=.o) $(REQ:=.o)
 slstatus.o: slstatus.c slstatus.h arg.h config.h $(REQ:=.h)
