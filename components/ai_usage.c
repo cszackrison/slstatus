@@ -19,6 +19,7 @@
 
 #define CODEX_RESCAN_SECONDS 60
 #define CODEX_READ_LIMIT (2 * 1024 * 1024)
+#define USAGE_BAR_WIDTH 5
 
 struct usage_window {
 	double used;
@@ -461,26 +462,59 @@ remaining_percent(double used)
 	return remaining;
 }
 
+static int
+format_usage_bar(char *bar, size_t size, int remaining)
+{
+	static const char *partial[] = { "", "▏", "▎", "▍", "▌", "▋", "▊", "▉" };
+	size_t used = 0;
+	int eighths, i, length;
+	const char *cell;
+
+	eighths = (remaining * USAGE_BAR_WIDTH * 8 + 50) / 100;
+	for (i = 0; i < USAGE_BAR_WIDTH; i++) {
+		if (eighths >= 8) {
+			cell = "█";
+			eighths -= 8;
+		} else if (eighths > 0) {
+			cell = partial[eighths];
+			eighths = 0;
+		} else {
+			cell = "░";
+		}
+		length = snprintf(bar + used, size - used, "%s", cell);
+		if (length < 0 || (size_t)length >= size - used)
+			return 0;
+		used += (size_t)length;
+	}
+
+	return 1;
+}
+
 static const char *
 format_usage(struct usage_snapshot *snapshot)
 {
 	time_t now;
-	int five, week;
+	char five_bar[32], week_bar[32];
+	int five, five_remaining, week, week_remaining;
 
 	now = time(NULL);
 	five = snapshot->five_hour.present &&
 	       snapshot->five_hour.resets_at > now;
 	week = snapshot->weekly.present && snapshot->weekly.resets_at > now;
+	five_remaining = five ? remaining_percent(snapshot->five_hour.used) : 0;
+	week_remaining = week ? remaining_percent(snapshot->weekly.used) : 0;
+	if ((five && !format_usage_bar(five_bar, sizeof(five_bar),
+	                               five_remaining)) ||
+	    (week && !format_usage_bar(week_bar, sizeof(week_bar),
+	                               week_remaining)))
+		return NULL;
 	if (five && week)
-		return bprintf("5hr %d%% wk %d%%",
-		               remaining_percent(snapshot->five_hour.used),
-		               remaining_percent(snapshot->weekly.used));
+		return bprintf("5hr [%s] %d%% wk [%s] %d%%", five_bar,
+		               five_remaining, week_bar, week_remaining);
 	if (five)
-		return bprintf("5hr %d%%",
-		               remaining_percent(snapshot->five_hour.used));
+		return bprintf("5hr [%s] %d%%", five_bar, five_remaining);
 	if (week)
-		return bprintf("wk %d%%",
-		               remaining_percent(snapshot->weekly.used));
+		return bprintf("wk [%s] %d%%", week_bar, week_remaining);
 
 	return NULL;
 }

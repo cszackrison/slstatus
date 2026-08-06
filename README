@@ -96,8 +96,10 @@ argument it checks `HERDR_SOCKET_PATH`, then
 
 AI subscription usage
 ---------------------
-The Claude and OpenAI components display remaining subscription capacity. They
-do not use API keys or make network requests.
+The Claude and OpenAI components display remaining subscription capacity as
+five-cell progress bars with the exact percentage alongside them, for example
+`5hr [███▊░] 75%`. A fuller bar means more capacity remains. The components do
+not use API keys or make network requests.
 
 OpenAI usage is read from the newest Codex rollout under
 `$CODEX_HOME/sessions` (or `~/.codex/sessions`). Codex writes the same rate-limit
