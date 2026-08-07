@@ -549,6 +549,7 @@ herdr_status(const char *configured_path)
 	char socket_path[sizeof(((struct sockaddr_un *)0)->sun_path)];
 	char status[256];
 	char *response = NULL;
+	const char *blocked_symbol = "!", *done_symbol = "✓";
 	size_t length, total, used = 0;
 
 	if (!resolve_socket_path(socket_path, sizeof(socket_path), configured_path) ||
@@ -567,17 +568,17 @@ herdr_status(const char *configured_path)
 	}
 	status[0] = '\0';
 	if (counts.blocked || counts.done) {
-		const char *marker = attention_frame ? "◇" : "◆";
-
-		if (snprintf(status, sizeof(status), "%s", marker) < 0)
-			return NULL;
-		used = strlen(status);
+		if (attention_frame) {
+			blocked_symbol = " ";
+			done_symbol = " ";
+		}
 		attention_frame = !attention_frame;
 	} else {
 		attention_frame = 0;
 	}
-	if (!append_count(status, sizeof(status), &used, "!", counts.blocked) ||
-	    !append_count(status, sizeof(status), &used, "✓", counts.done) ||
+	if (!append_count(status, sizeof(status), &used, blocked_symbol,
+	                  counts.blocked) ||
+	    !append_count(status, sizeof(status), &used, done_symbol, counts.done) ||
 	    !append_count(status, sizeof(status), &used, "…", counts.working) ||
 	    !append_count(status, sizeof(status), &used, "○", counts.idle) ||
 	    !append_count(status, sizeof(status), &used, "?", counts.unknown))

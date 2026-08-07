@@ -19,14 +19,14 @@ printf '%s\n' \
 	> "$tmp/mixed.json"
 assert_equal "$("$tmp/probe" "$tmp/mixed.sock" \
 	"$tmp/mixed.json" "$tmp/mixed.json")" \
-	"$(printf '◆ !1 ✓1 …2 ○1 ?2\n◇ !1 ✓1 …2 ○1 ?2')"
+	"$(printf '!1 ✓1 …2 ○1 ?2\n 1  1 …2 ○1 ?2')"
 
 printf '%s\n' \
 	'{"result":{"type":"agent_list","agents":[{"agent_status":"working"}]}}' \
 	> "$tmp/working.json"
 assert_equal "$("$tmp/probe" "$tmp/reset.sock" "$tmp/mixed.json" \
 	"$tmp/working.json" "$tmp/mixed.json")" \
-	"$(printf '◆ !1 ✓1 …2 ○1 ?2\n…1\n◆ !1 ✓1 …2 ○1 ?2')"
+	"$(printf '!1 ✓1 …2 ○1 ?2\n…1\n!1 ✓1 …2 ○1 ?2')"
 
 printf '%s\n' '{"result":{"agents":[],"type":"agent_list"}}' \
 	> "$tmp/empty.json"
