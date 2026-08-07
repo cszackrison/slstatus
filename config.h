@@ -13,9 +13,9 @@ static const char unknown_str[] = "n/a";
 /* output formats */
 static const struct arg args[] = {
 	/* function, format, argument */
-	{ herdr_status, "| Herdr %s ", NULL, 1 },
-	{ claude_subscription_usage, "| Claude %s ", NULL, 1 },
-	{ openai_subscription_usage, "| OpenAI %s ", NULL, 1 },
+	{ herdr_status, "| AGENTS %s ", NULL, 1 },
+	{ claude_subscription_usage, "| ANT %s ", NULL, 1 },
+	{ openai_subscription_usage, "| OAI %s ", NULL, 1 },
 	/*{ disk_free, " %.5s GiB | ", "/" },
 	{ ipv4, "E: %s | ", "enp9s0" },*/
 	/*{ wifi_perc, "W: (%3s%% on ", "wlp8s0" },
