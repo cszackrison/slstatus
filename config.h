@@ -19,6 +19,7 @@ static const struct arg args[] = {
 	{ herdr_status, "\x05" PAD "AGENTS %s ", NULL, 1 },
 	{ claude_subscription_usage, "\x06" PAD " %s ", NULL, 1 },
 	{ openai_subscription_usage, "\x07" PAD " %s ", NULL, 1 },
+	{ opencode_go_usage, "\x0b" PAD "󰚩 %s ", NULL, 1 },
 	/*{ disk_free, " %.5s GiB | ", "/" },
 	{ ipv4, "E: %s | ", "enp9s0" },*/
 	/*{ wifi_perc, "W: (%3s%% on ", "wlp8s0" },

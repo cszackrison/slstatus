@@ -2,3 +2,6 @@
 *.o
 /slstatus
 /slstatus-*.tar.gz
+
+# Browser captures can contain account secrets
+/opencode_har.json

@@ -11,7 +11,8 @@ X11INC = /usr/include/X11
 X11LIB = /usr/lib/X11
 
 # flags
-CPPFLAGS = -I$(X11INC) -D_DEFAULT_SOURCE
+CPPFLAGS = -I$(X11INC) -D_DEFAULT_SOURCE \
+           -DSLSTATUS_LIBEXEC=\"$(PREFIX)/libexec/slstatus\"
 CFLAGS   = -std=c99 -pedantic -Wall -Wextra -Os
 LDFLAGS  = -L$(X11LIB) -s
 LDLIBS   = -lX11

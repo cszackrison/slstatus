@@ -1,0 +1,159 @@
+#!/bin/sh
+
+# Fetch OpenCode Go dashboard usage and cache only percentages and reset times.
+
+set -u
+
+cache_base=${XDG_CACHE_HOME:-"${HOME}/.cache"}
+config_base=${XDG_CONFIG_HOME:-"${HOME}/.config"}
+cache_dir=$cache_base/slstatus
+cache_file=$cache_dir/opencode-go-usage-v1
+config_file=$config_base/slstatus/opencode-go.json
+html_tmp=
+header_tmp=
+output_tmp=
+
+cleanup()
+{
+	[ -n "$html_tmp" ] && rm -f "$html_tmp"
+	[ -n "$header_tmp" ] && rm -f "$header_tmp"
+	[ -n "$output_tmp" ] && rm -f "$output_tmp"
+}
+
+fail()
+{
+	if [ "${SLSTATUS_OPENCODE_DEBUG:-0}" = "1" ]; then
+		printf 'opencode-go-usage-cache: %s\n' "${1:-unknown failure}" >&2
+	fi
+	rm -f "$cache_file"
+	exit 1
+}
+
+trap cleanup 0
+trap 'exit 1' HUP INT TERM
+
+umask 077
+mkdir -p "$cache_dir" || fail "cannot create cache directory"
+chmod 700 "$cache_dir" || fail "cannot protect cache directory"
+
+if [ "${1:-}" = "--parse" ]; then
+	[ "$#" -eq 2 ] && [ -r "$2" ] || fail "cannot read input page"
+	html_tmp=$2
+else
+	[ "$#" -eq 0 ] && [ -r "$config_file" ] || fail "cannot read configuration"
+	if find "$config_file" -prune -perm /077 -print -quit 2>/dev/null \
+		| grep -q .; then
+		fail "configuration permissions are not 600"
+	fi
+	workspace_id=$(jq -er \
+		'.workspaceId | strings | select(test("^wrk_[A-Za-z0-9]+$"))' \
+		"$config_file" 2>/dev/null) || fail "invalid workspace ID"
+	auth_cookie=$(jq -er \
+		'.authCookie | strings |
+		 select(length > 0 and all(explode[]; . >= 33 and . <= 126))' \
+		"$config_file" 2>/dev/null) || fail "invalid auth cookie"
+
+	html_tmp=$(mktemp "$cache_dir/.opencode-go-page.XXXXXX") ||
+		fail "cannot create page file"
+	header_tmp=$(mktemp "$cache_dir/.opencode-go-header.XXXXXX") ||
+		fail "cannot create header file"
+	printf 'Cookie: auth=%s\n' "$auth_cookie" > "$header_tmp" ||
+		fail "cannot create request header"
+	if ! curl --silent --fail --location --compressed \
+		--connect-timeout 3 --max-time 10 \
+		--user-agent 'Mozilla/5.0 Gecko/20100101 Firefox/148.0' \
+		--header 'Accept: text/html' --header "@$header_tmp" \
+		--output "$html_tmp" \
+		"https://opencode.ai/workspace/$workspace_id/go"; then
+		fail "dashboard request failed"
+	fi
+fi
+
+values=$(perl -0777 -e '
+	use strict;
+	use warnings;
+
+	my $html = do { local $/; <> };
+	my %usage;
+
+	for my $item (
+		[rolling => "rollingUsage"],
+		[weekly  => "weeklyUsage"],
+		[monthly => "monthlyUsage"],
+	) {
+		my ($name, $field) = @$item;
+		if ($html =~ /\Q$field\E:\$R\[\d+\]=\{([^}]*)\}/s) {
+			my $object = $1;
+			my ($used) = $object =~ /usagePercent:(-?\d+(?:\.\d+)?)/;
+			my ($reset) = $object =~ /resetInSec:(-?\d+(?:\.\d+)?)/;
+			$usage{$name} = [$used + 0, $reset + 0]
+				if defined($used) && defined($reset);
+		}
+	}
+
+	if (!%usage) {
+		while ($html =~ /data-slot="usage-item"(.*?)(?=data-slot="usage-item"|$)/sg) {
+			my $item = $1;
+			my ($label) = $item =~ /data-slot="usage-label">([^<]+)</s;
+			my ($used) = $item =~ /data-slot="usage-value">[^0-9]*(\d+(?:\.\d+)?)/s;
+			my ($kind, $reset_text) =
+				$item =~ /data-slot="(reset-time|reset-now)">(.*?)<\/span>/s;
+			next unless defined($label) && defined($used) && defined($kind);
+			$label = lc($label);
+			my $name = $label =~ /rolling/ ? "rolling" :
+			           $label =~ /weekly/  ? "weekly"  :
+			           $label =~ /monthly/ ? "monthly" : undef;
+			next unless defined($name);
+			my $reset = 0;
+			if ($kind ne "reset-now") {
+				$reset_text =~ s/<!--.*?-->/ /sg;
+				$reset_text =~ s/<[^>]+>/ /sg;
+				my $found = 0;
+				for my $unit ([days => 86400], [hours => 3600],
+				              [minutes => 60], [seconds => 1]) {
+					if ($reset_text =~ /(\d+(?:\.\d+)?)\s*$unit->[0]?/i) {
+						$reset += $1 * $unit->[1];
+						$found = 1;
+					}
+				}
+				next unless $found;
+			}
+			$usage{$name} = [$used + 0, $reset];
+		}
+	}
+
+	my @result;
+	my $now = time;
+	for my $name (qw(rolling weekly monthly)) {
+		my $window = $usage{$name};
+		if (!$window || $window->[0] < 0 || $window->[0] > 100 ||
+		    $window->[1] < 0) {
+			push @result, "-", "-";
+			next;
+		}
+		push @result, $window->[0], int($now + $window->[1]);
+	}
+	print join("\t", @result), "\n";
+' "$html_tmp" 2>/dev/null) || fail "dashboard parser failed"
+
+tab=$(printf '\t')
+old_ifs=$IFS
+IFS=$tab
+read -r five_used five_reset week_used week_reset month_used month_reset <<EOF
+$values
+EOF
+IFS=$old_ifs
+
+if [ "$five_used" = "-" ] && [ "$week_used" = "-" ] && \
+	[ "$month_used" = "-" ]; then
+	fail "dashboard has no usage data"
+fi
+
+output_tmp=$(mktemp "$cache_dir/.opencode-go-usage.XXXXXX") ||
+	fail "cannot create cache file"
+printf 'v1\t%s\t%s\t%s\t%s\t%s\t%s\t%s\n' \
+	"$(date +%s)" "$five_used" "$five_reset" "$week_used" \
+	"$week_reset" "$month_used" "$month_reset" > "$output_tmp" ||
+	fail "cannot write cache file"
+mv -f "$output_tmp" "$cache_file" || fail "cannot publish cache file"
+output_tmp=

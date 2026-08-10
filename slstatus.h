@@ -3,6 +3,7 @@
 /* AI subscription usage */
 const char *claude_subscription_usage(const char *);
 const char *openai_subscription_usage(const char *);
+const char *opencode_go_usage(const char *);
 
 /* Herdr */
 const char *herdr_status(const char *);

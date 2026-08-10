@@ -8,6 +8,7 @@
 #include <string.h>
 #include <sys/stat.h>
 #include <sys/types.h>
+#include <sys/wait.h>
 #include <time.h>
 #include <unistd.h>
 
@@ -19,7 +20,15 @@
 
 #define CODEX_RESCAN_SECONDS 60
 #define CODEX_READ_LIMIT (2 * 1024 * 1024)
+#define OPENCODE_CACHE_MAX_AGE 300
+#define OPENCODE_REFRESH_SECONDS 60
 #define USAGE_BAR_WIDTH 5
+
+#ifndef SLSTATUS_LIBEXEC
+#define SLSTATUS_LIBEXEC "/usr/local/libexec/slstatus"
+#endif
+
+#define OPENCODE_HELPER SLSTATUS_LIBEXEC "/opencode-go-usage-cache"
 
 struct usage_window {
 	double used;
@@ -30,6 +39,7 @@ struct usage_window {
 struct usage_snapshot {
 	struct usage_window five_hour;
 	struct usage_window weekly;
+	struct usage_window monthly;
 };
 
 static struct usage_snapshot codex_usage;
@@ -37,6 +47,8 @@ static char codex_rollout[PATH_MAX];
 static char codex_sessions_root[PATH_MAX];
 static off_t codex_offset;
 static time_t codex_next_scan;
+static pid_t opencode_updater = -1;
+static time_t opencode_next_refresh;
 
 static int
 has_suffix(const char *str, const char *suffix)
@@ -449,6 +461,54 @@ read_claude_cache(const char *path, struct usage_snapshot *snapshot)
 }
 
 static int
+read_opencode_cache(const char *path, struct usage_snapshot *snapshot)
+{
+	char version[8], fetched[32], five_used[32], five_reset[32];
+	char week_used[32], week_reset[32], month_used[32], month_reset[32];
+	double used;
+	time_t fetched_at, now, resets_at;
+	FILE *fp;
+
+	memset(snapshot, 0, sizeof(*snapshot));
+	if (!(fp = fopen(path, "r")))
+		return 0;
+	if (fscanf(fp, "%7s %31s %31s %31s %31s %31s %31s %31s",
+	           version, fetched, five_used, five_reset, week_used,
+	           week_reset, month_used, month_reset) != 8 ||
+	    strcmp(version, "v1")) {
+		fclose(fp);
+		return 0;
+	}
+	fclose(fp);
+
+	now = time(NULL);
+	if (!parse_cache_time(fetched, &fetched_at) || fetched_at > now + 60 ||
+	    now - fetched_at > OPENCODE_CACHE_MAX_AGE)
+		return 0;
+	if (parse_cache_token(five_used, &used) &&
+	    parse_cache_time(five_reset, &resets_at)) {
+		snapshot->five_hour.used = used;
+		snapshot->five_hour.resets_at = resets_at;
+		snapshot->five_hour.present = 1;
+	}
+	if (parse_cache_token(week_used, &used) &&
+	    parse_cache_time(week_reset, &resets_at)) {
+		snapshot->weekly.used = used;
+		snapshot->weekly.resets_at = resets_at;
+		snapshot->weekly.present = 1;
+	}
+	if (parse_cache_token(month_used, &used) &&
+	    parse_cache_time(month_reset, &resets_at)) {
+		snapshot->monthly.used = used;
+		snapshot->monthly.resets_at = resets_at;
+		snapshot->monthly.present = 1;
+	}
+
+	return snapshot->five_hour.present || snapshot->weekly.present ||
+	       snapshot->monthly.present;
+}
+
+static int
 remaining_percent(double used)
 {
 	int remaining;
@@ -490,33 +550,67 @@ format_usage_bar(char *bar, size_t size, int remaining)
 	return 1;
 }
 
+static int
+append_usage_window(char *dst, size_t size, size_t *used,
+                    const char *label, struct usage_window *window,
+                    time_t now)
+{
+	char bar[32];
+	int length, remaining;
+
+	if (!window->present || window->resets_at <= now)
+		return 1;
+	remaining = remaining_percent(window->used);
+	if (!format_usage_bar(bar, sizeof(bar), remaining))
+		return 0;
+	length = snprintf(dst + *used, size - *used, "%s%s [%s] %d%%",
+	                  *used ? " " : "", label, bar, remaining);
+	if (length < 0 || (size_t)length >= size - *used)
+		return 0;
+	*used += (size_t)length;
+
+	return 1;
+}
+
 static const char *
 format_usage(struct usage_snapshot *snapshot)
 {
 	time_t now;
-	char five_bar[32], week_bar[32];
-	int five, five_remaining, week, week_remaining;
+	size_t used = 0;
 
 	now = time(NULL);
-	five = snapshot->five_hour.present &&
-	       snapshot->five_hour.resets_at > now;
-	week = snapshot->weekly.present && snapshot->weekly.resets_at > now;
-	five_remaining = five ? remaining_percent(snapshot->five_hour.used) : 0;
-	week_remaining = week ? remaining_percent(snapshot->weekly.used) : 0;
-	if ((five && !format_usage_bar(five_bar, sizeof(five_bar),
-	                               five_remaining)) ||
-	    (week && !format_usage_bar(week_bar, sizeof(week_bar),
-	                               week_remaining)))
+	buf[0] = '\0';
+	if (!append_usage_window(buf, sizeof(buf), &used, "5hr",
+	                         &snapshot->five_hour, now) ||
+	    !append_usage_window(buf, sizeof(buf), &used, "wk",
+	                         &snapshot->weekly, now) ||
+	    !append_usage_window(buf, sizeof(buf), &used, "mo",
+	                         &snapshot->monthly, now))
 		return NULL;
-	if (five && week)
-		return bprintf("5hr [%s] %d%% wk [%s] %d%%", five_bar,
-		               five_remaining, week_bar, week_remaining);
-	if (five)
-		return bprintf("5hr [%s] %d%%", five_bar, five_remaining);
-	if (week)
-		return bprintf("wk [%s] %d%%", week_bar, week_remaining);
 
-	return NULL;
+	return used ? buf : NULL;
+}
+
+static void
+start_opencode_update(time_t now)
+{
+	pid_t result;
+
+	if (opencode_updater > 0) {
+		result = waitpid(opencode_updater, NULL, WNOHANG);
+		if (result == 0)
+			return;
+		if (result == opencode_updater || (result < 0 && errno != EINTR))
+			opencode_updater = -1;
+	}
+	if (opencode_updater > 0 || now < opencode_next_refresh)
+		return;
+	opencode_next_refresh = now + OPENCODE_REFRESH_SECONDS;
+	opencode_updater = fork();
+	if (opencode_updater == 0) {
+		execl(OPENCODE_HELPER, OPENCODE_HELPER, (char *)NULL);
+		_exit(127);
+	}
 }
 
 const char *
@@ -566,4 +660,25 @@ openai_subscription_usage(const char *sessions_root)
 	read_codex_updates();
 
 	return format_usage(&codex_usage);
+}
+
+const char *
+opencode_go_usage(const char *cache_path)
+{
+	char path[PATH_MAX];
+	struct usage_snapshot snapshot;
+	time_t now;
+
+	now = time(NULL);
+	if (!cache_path) {
+		start_opencode_update(now);
+		if (!default_path(path, sizeof(path), "XDG_CACHE_HOME", ".cache",
+		                  "slstatus/opencode-go-usage-v1"))
+			return NULL;
+		cache_path = path;
+	}
+	if (!read_opencode_cache(cache_path, &snapshot))
+		return NULL;
+
+	return format_usage(&snapshot);
 }

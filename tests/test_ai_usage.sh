@@ -17,6 +17,7 @@ assert_equal() {
 now=$(date +%s)
 future=$((now + 3600))
 past=$((now - 1))
+stale=$((now - 301))
 
 printf 'v1\t25.4\t%s\t96\t%s\n' "$future" "$future" \
 	> "$tmp/claude"
@@ -35,6 +36,15 @@ assert_equal "$("$tmp/probe" claude "$tmp/claude")" \
 
 printf 'not-a-cache\n' > "$tmp/claude"
 assert_equal "$("$tmp/probe" claude "$tmp/claude")" "NULL"
+
+printf 'v1\t%s\t25.4\t%s\t96\t%s\t60\t%s\n' \
+	"$now" "$future" "$future" "$future" > "$tmp/opencode"
+assert_equal "$("$tmp/probe" opencode "$tmp/opencode")" \
+	"5hr [███▊░] 75% wk [▎░░░░] 4% mo [██░░░] 40%"
+
+printf 'v1\t%s\t25.4\t%s\t-\t-\t-\t-\n' \
+	"$stale" "$future" > "$tmp/opencode"
+assert_equal "$("$tmp/probe" opencode "$tmp/opencode")" "NULL"
 
 mkdir -p "$tmp/sessions/2026/07/21"
 rollout=$tmp/sessions/2026/07/21/rollout-test.jsonl
