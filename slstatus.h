@@ -3,7 +3,10 @@
 /* AI subscription usage */
 const char *claude_subscription_usage(const char *);
 const char *openai_subscription_usage(const char *);
+const char *grok_subscription_usage(const char *);
 const char *opencode_go_usage(const char *);
+void ai_usage_report(void);
+void ai_usage_menu(int);
 
 /* Herdr */
 const char *herdr_status(const char *);
@@ -20,6 +23,7 @@ const char *cpu_iowait(void);
 
 /* datetime */
 const char *datetime(const char *);
+void datetime_click(int);
 
 /* disk */
 const char *disk_free(const char *);

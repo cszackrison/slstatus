@@ -19,9 +19,9 @@
 #endif
 
 #define CODEX_RESCAN_SECONDS 60
-#define CODEX_READ_LIMIT (2 * 1024 * 1024)
-#define OPENCODE_CACHE_MAX_AGE 300
-#define OPENCODE_REFRESH_SECONDS 60
+#define USAGE_LOG_READ_LIMIT (2 * 1024 * 1024)
+#define OPENCODE_REFRESH_SECONDS (60 * 60)
+#define OPENCODE_CACHE_MAX_AGE (OPENCODE_REFRESH_SECONDS + 5 * 60)
 #define USAGE_BAR_WIDTH 5
 
 #ifndef SLSTATUS_LIBEXEC
@@ -29,6 +29,7 @@
 #endif
 
 #define OPENCODE_HELPER SLSTATUS_LIBEXEC "/opencode-go-usage-cache"
+#define AI_USAGE_MENU_HELPER SLSTATUS_LIBEXEC "/ai-usage-menu"
 
 struct usage_window {
 	double used;
@@ -47,8 +48,20 @@ static char codex_rollout[PATH_MAX];
 static char codex_sessions_root[PATH_MAX];
 static off_t codex_offset;
 static time_t codex_next_scan;
+static struct usage_snapshot grok_usage;
+static char grok_log[PATH_MAX];
+static off_t grok_offset;
+static dev_t grok_device;
+static ino_t grok_inode;
 static pid_t opencode_updater = -1;
 static time_t opencode_next_refresh;
+
+static void
+print_usage_line(const char *icon, const char *provider, const char *usage)
+{
+	printf("%s %-11s %s\n", icon, provider,
+	       usage ? usage : "unavailable");
+}
 
 static int
 has_suffix(const char *str, const char *suffix)
@@ -250,6 +263,114 @@ parse_codex_buffer(char *data, size_t len)
 }
 
 static int
+parse_iso8601(const char *text, time_t *when)
+{
+	struct tm tm, check;
+	const char *p;
+	time_t parsed;
+	int year, month, day, hour, minute, second;
+	int offset_hour = 0, offset_minute = 0, offset_sign = 0;
+
+	if (sscanf(text, "%4d-%2d-%2dT%2d:%2d:%2d", &year, &month,
+	           &day, &hour, &minute, &second) != 6)
+		return 0;
+	p = text + 19;
+	if (*p == '.') {
+		p++;
+		if (*p < '0' || *p > '9')
+			return 0;
+		while (*p >= '0' && *p <= '9')
+			p++;
+	}
+	if (*p == 'Z' && !p[1]) {
+		p++;
+	} else if ((*p == '+' || *p == '-') && strlen(p) == 6 &&
+	           sscanf(p + 1, "%2d:%2d", &offset_hour,
+	                  &offset_minute) == 2) {
+		offset_sign = *p == '+' ? 1 : -1;
+		p += 6;
+	} else {
+		return 0;
+	}
+	if (*p || year < 1970 || month < 1 || month > 12 || day < 1 ||
+	    day > 31 || hour < 0 || hour > 23 || minute < 0 || minute > 59 ||
+	    second < 0 || second > 59 || offset_hour > 23 ||
+	    offset_minute > 59)
+		return 0;
+
+	memset(&tm, 0, sizeof(tm));
+	tm.tm_year = year - 1900;
+	tm.tm_mon = month - 1;
+	tm.tm_mday = day;
+	tm.tm_hour = hour;
+	tm.tm_min = minute;
+	tm.tm_sec = second;
+	parsed = timegm(&tm);
+	if (parsed < 0 || !gmtime_r(&parsed, &check) ||
+	    check.tm_year != year - 1900 || check.tm_mon != month - 1 ||
+	    check.tm_mday != day || check.tm_hour != hour ||
+	    check.tm_min != minute || check.tm_sec != second)
+		return 0;
+	parsed -= offset_sign * (offset_hour * 60 + offset_minute) * 60;
+	*when = parsed;
+
+	return 1;
+}
+
+static int
+parse_grok_line(char *line, struct usage_snapshot *snapshot)
+{
+	const char *p, *end;
+	char object[512], period_type[64], resets[64];
+	struct usage_snapshot parsed = {0};
+	struct usage_window window;
+	double used;
+	size_t len;
+
+	if (!json_double(line, "\"creditUsagePercent\"", &used) ||
+	    used < 0.0 || used > 100.0 ||
+	    !(p = json_value(line, "\"currentPeriod\"")) || *p != '{' ||
+	    !(end = strchr(p, '}')))
+		return 0;
+	len = (size_t)(end - p + 1);
+	if (len >= sizeof(object))
+		return 0;
+	memcpy(object, p, len);
+	object[len] = '\0';
+	if (!json_string(object, "\"type\"", period_type,
+	                 sizeof(period_type)) ||
+	    !json_string(object, "\"end\"", resets, sizeof(resets)) ||
+	    !parse_iso8601(resets, &window.resets_at))
+		return 0;
+
+	window.used = used;
+	window.present = 1;
+	if (!strcmp(period_type, "USAGE_PERIOD_TYPE_WEEKLY"))
+		parsed.weekly = window;
+	else if (!strcmp(period_type, "USAGE_PERIOD_TYPE_MONTHLY"))
+		parsed.monthly = window;
+	else
+		return 0;
+	*snapshot = parsed;
+
+	return 1;
+}
+
+static void
+parse_grok_buffer(char *data, size_t len)
+{
+	char *line, *end;
+
+	line = data;
+	while (line < data + len && (end = memchr(line, '\n',
+	       (size_t)(data + len - line)))) {
+		*end = '\0';
+		parse_grok_line(line, &grok_usage);
+		line = end + 1;
+	}
+}
+
+static int
 rollout_is_newer(const struct stat *st, const char *path, time_t best_mtime,
                  const char *best_path)
 {
@@ -330,7 +451,8 @@ select_codex_rollout(int full_scan)
 }
 
 static void
-read_codex_updates(void)
+read_log_updates(const char *path, off_t *offset,
+                 void (*parse_buffer)(char *, size_t))
 {
 	struct stat st;
 	char *data;
@@ -339,21 +461,21 @@ read_codex_updates(void)
 	size_t length, skip;
 	int fd;
 
-	if (!codex_rollout[0] || stat(codex_rollout, &st) < 0)
+	if (!path[0] || stat(path, &st) < 0)
 		return;
-	if (st.st_size == codex_offset)
+	if (st.st_size == *offset)
 		return;
 
-	start = codex_offset;
+	start = *offset;
 	if (start < 0 || start > st.st_size ||
-	    st.st_size - start > CODEX_READ_LIMIT) {
-		start = st.st_size > CODEX_READ_LIMIT ?
-		        st.st_size - CODEX_READ_LIMIT : 0;
+	    st.st_size - start > USAGE_LOG_READ_LIMIT) {
+		start = st.st_size > USAGE_LOG_READ_LIMIT ?
+		        st.st_size - USAGE_LOG_READ_LIMIT : 0;
 	}
 	length = (size_t)(st.st_size - start);
 	if (!length || !(data = malloc(length + 1)))
 		return;
-	if ((fd = open(codex_rollout, O_RDONLY)) < 0) {
+	if ((fd = open(path, O_RDONLY)) < 0) {
 		free(data);
 		return;
 	}
@@ -367,7 +489,7 @@ read_codex_updates(void)
 	data[nread] = '\0';
 
 	skip = 0;
-	if (start > 0 && start != codex_offset) {
+	if (start > 0 && start != *offset) {
 		char *newline = memchr(data, '\n', (size_t)nread);
 		if (!newline) {
 			free(data);
@@ -383,11 +505,16 @@ read_codex_updates(void)
 		}
 	}
 	if (last_complete >= 0) {
-		parse_codex_buffer(data + skip,
-		                   (size_t)last_complete + 1 - skip);
-		codex_offset = start + last_complete + 1;
+		parse_buffer(data + skip, (size_t)last_complete + 1 - skip);
+		*offset = start + last_complete + 1;
 	}
 	free(data);
+}
+
+static void
+read_codex_updates(void)
+{
+	read_log_updates(codex_rollout, &codex_offset, parse_codex_buffer);
 }
 
 static int
@@ -663,6 +790,38 @@ openai_subscription_usage(const char *sessions_root)
 }
 
 const char *
+grok_subscription_usage(const char *log_path)
+{
+	struct stat st;
+	char path[PATH_MAX];
+
+	if (!log_path) {
+		if (!default_path(path, sizeof(path), "GROK_HOME", ".grok",
+		                  "logs/unified.jsonl"))
+			return NULL;
+		log_path = path;
+	}
+	if (strcmp(log_path, grok_log)) {
+		snprintf(grok_log, sizeof(grok_log), "%s", log_path);
+		grok_offset = 0;
+		grok_device = 0;
+		grok_inode = 0;
+		memset(&grok_usage, 0, sizeof(grok_usage));
+	}
+	if (stat(grok_log, &st) < 0 || !S_ISREG(st.st_mode))
+		return NULL;
+	if (grok_device != st.st_dev || grok_inode != st.st_ino) {
+		grok_offset = 0;
+		grok_device = st.st_dev;
+		grok_inode = st.st_ino;
+		memset(&grok_usage, 0, sizeof(grok_usage));
+	}
+	read_log_updates(grok_log, &grok_offset, parse_grok_buffer);
+
+	return format_usage(&grok_usage);
+}
+
+const char *
 opencode_go_usage(const char *cache_path)
 {
 	char path[PATH_MAX];
@@ -681,4 +840,42 @@ opencode_go_usage(const char *cache_path)
 		return NULL;
 
 	return format_usage(&snapshot);
+}
+
+void
+ai_usage_report(void)
+{
+	char path[PATH_MAX];
+	const char *usage;
+
+	usage = claude_subscription_usage(NULL);
+	print_usage_line("", "Claude", usage);
+	usage = openai_subscription_usage(NULL);
+	print_usage_line("", "OpenAI", usage);
+	usage = grok_subscription_usage(NULL);
+	print_usage_line("", "Grok", usage);
+	usage = default_path(path, sizeof(path), "XDG_CACHE_HOME", ".cache",
+	                     "slstatus/opencode-go-usage-v1") ?
+	        opencode_go_usage(path) : NULL;
+	print_usage_line("󰚩", "OpenCode Go", usage);
+}
+
+void
+ai_usage_menu(int button)
+{
+	pid_t child, launcher;
+
+	if (button != 1 || (launcher = fork()) < 0)
+		return;
+	if (launcher == 0) {
+		child = fork();
+		if (child == 0) {
+			execl(AI_USAGE_MENU_HELPER, AI_USAGE_MENU_HELPER,
+			      (char *)NULL);
+			_exit(127);
+		}
+		_exit(child < 0 ? 127 : 0);
+	}
+	while (waitpid(launcher, NULL, 0) < 0 && errno == EINTR)
+		;
 }

@@ -71,9 +71,15 @@ install: all
 		"$(DESTDIR)$(PREFIX)/libexec/slstatus/claude-usage-cache"
 	cp -f scripts/opencode-go-usage-cache \
 		"$(DESTDIR)$(PREFIX)/libexec/slstatus/opencode-go-usage-cache"
+	cp -f scripts/ai-usage-menu \
+		"$(DESTDIR)$(PREFIX)/libexec/slstatus/ai-usage-menu"
+	cp -f scripts/calendar-popup \
+		"$(DESTDIR)$(PREFIX)/libexec/slstatus/calendar-popup"
 	chmod 755 \
 		"$(DESTDIR)$(PREFIX)/libexec/slstatus/claude-usage-cache" \
-		"$(DESTDIR)$(PREFIX)/libexec/slstatus/opencode-go-usage-cache"
+		"$(DESTDIR)$(PREFIX)/libexec/slstatus/opencode-go-usage-cache" \
+		"$(DESTDIR)$(PREFIX)/libexec/slstatus/ai-usage-menu" \
+		"$(DESTDIR)$(PREFIX)/libexec/slstatus/calendar-popup"
 	mkdir -p "$(DESTDIR)$(MANPREFIX)/man1"
 	cp -f slstatus.1 "$(DESTDIR)$(MANPREFIX)/man1"
 	chmod 644 "$(DESTDIR)$(MANPREFIX)/man1/slstatus.1"
@@ -82,4 +88,6 @@ uninstall:
 	rm -f "$(DESTDIR)$(PREFIX)/bin/slstatus"
 	rm -f "$(DESTDIR)$(PREFIX)/libexec/slstatus/claude-usage-cache"
 	rm -f "$(DESTDIR)$(PREFIX)/libexec/slstatus/opencode-go-usage-cache"
+	rm -f "$(DESTDIR)$(PREFIX)/libexec/slstatus/ai-usage-menu"
+	rm -f "$(DESTDIR)$(PREFIX)/libexec/slstatus/calendar-popup"
 	rm -f "$(DESTDIR)$(MANPREFIX)/man1/slstatus.1"

@@ -55,7 +55,7 @@ difftimespec(struct timespec *res, struct timespec *a, struct timespec *b)
 static void
 usage(void)
 {
-	fprintf(stderr, "usage: %s [-s]\n", argv0);
+	fprintf(stderr, "usage: %s [-s | -u]\n", argv0);
 	exit(1);
 }
 
@@ -65,22 +65,29 @@ main(int argc, char *argv[])
 	struct sigaction act, clickact;
 	struct timespec start, current, diff, intspec, wait;
 	size_t i, len;
-	int sflag = 0;
+	int sflag = 0, uflag = 0;
 	char status[MAXLEN];
 
 	ARGBEGIN {
 		case 's':
 			sflag = 1;
 			break;
+		case 'u':
+			uflag = 1;
+			break;
 		default:
 			usage();
 	} ARGEND
 
-	if (argc) {
+	if (argc || (sflag && uflag)) {
 		usage();
 	}
 
 	setlocale(LC_ALL, "");
+	if (uflag) {
+		ai_usage_report();
+		return 0;
+	}
 
 	memset(&act, 0, sizeof(act));
 	act.sa_handler = terminate;
@@ -109,6 +116,10 @@ main(int argc, char *argv[])
 				razer_click("0003:1532:0083.", value & 0xff);
 			else if ((value >> 8) == 4)
 				mic_click(value & 0xff);
+			else if ((value >> 8) == 5)
+				ai_usage_menu(value & 0xff);
+			else if ((value >> 8) == 9)
+				datetime_click(value & 0xff);
 		}
 
 		status[0] = '\0';

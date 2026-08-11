@@ -17,7 +17,7 @@ assert_equal() {
 now=$(date +%s)
 future=$((now + 3600))
 past=$((now - 1))
-stale=$((now - 301))
+stale=$((now - 3901))
 
 printf 'v1\t25.4\t%s\t96\t%s\n' "$future" "$future" \
 	> "$tmp/claude"
@@ -69,6 +69,29 @@ printf '%s\n' \
 	'{"type":"event_msg","payload":{"type":"token_count","rate_limits":null}}' \
 	> "$rollout"
 assert_equal "$("$tmp/probe" openai "$tmp/sessions")" "NULL"
+
+grok_log=$tmp/grok.jsonl
+printf '%s\n' \
+	'{"ctx":{"config":{"creditUsagePercent":25.4,"currentPeriod":{"type":"USAGE_PERIOD_TYPE_WEEKLY","start":"2098-12-25T00:00:00Z","end":"2099-01-01T00:00:00.123456+00:00"}}}}' \
+	> "$grok_log"
+assert_equal "$("$tmp/probe" grok "$grok_log")" \
+	"wk [███▊░] 75%"
+
+printf '%s\n' \
+	'{"ctx":{"config":{"creditUsagePercent":25.4,"currentPeriod":{"type":"USAGE_PERIOD_TYPE_WEEKLY","end":"2099-01-01T00:00:00Z"}}}}' \
+	'{"ctx":{"config":{"creditUsagePercent":96,"currentPeriod":{"type":"USAGE_PERIOD_TYPE_WEEKLY","end":"2099-01-01T01:30:00+01:30"}}}}' \
+	> "$grok_log"
+assert_equal "$("$tmp/probe" grok "$grok_log")" \
+	"wk [▎░░░░] 4%"
+
+printf '%s\n' \
+	'{"ctx":{"config":{"creditUsagePercent":60,"currentPeriod":{"type":"USAGE_PERIOD_TYPE_MONTHLY","end":"2000-01-01T00:00:00Z"}}}}' \
+	> "$grok_log"
+assert_equal "$("$tmp/probe" grok "$grok_log")" "NULL"
+
+printf '%s\n' '{"ctx":{"config":{"creditUsagePercent":"bad"}}}' \
+	> "$grok_log"
+assert_equal "$("$tmp/probe" grok "$grok_log")" "NULL"
 
 cache_root=$tmp/cache
 output=$(printf '%s\n' \
