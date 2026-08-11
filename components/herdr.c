@@ -549,7 +549,7 @@ herdr_status(const char *configured_path)
 	char socket_path[sizeof(((struct sockaddr_un *)0)->sun_path)];
 	char status[256];
 	char *response = NULL;
-	const char *blocked_symbol = "!", *done_symbol = "✓";
+	const char *blocked_symbol = "!", *done_symbol = "";
 	size_t length, total, used = 0;
 
 	if (!resolve_socket_path(socket_path, sizeof(socket_path), configured_path) ||
@@ -570,7 +570,8 @@ herdr_status(const char *configured_path)
 	if (counts.blocked || counts.done) {
 		if (attention_frame) {
 			blocked_symbol = " ";
-			done_symbol = "⠀";
+			/* U+EC03 is an empty 13-pixel Nerd Font glyph. */
+			done_symbol = "\xEE\xB0\x83";
 		}
 		attention_frame = !attention_frame;
 	} else {

@@ -14,19 +14,21 @@ assert_equal() {
 	fi
 }
 
+done_blank=$(printf '\356\260\203')
+
 printf '%s\n' \
 	'{"id":"fixture","result":{"agents":[{"agent_status":"working","tokens":{"agent_status":"done"},"terminal_title":"agent_status blocked"},{"agent_status":"blocked"},{"agent_status":"done"},{"agent_status":"working"},{"agent_status":"idle"},{"agent_status":"unknown"},{"agent_status":"future"}],"type":"agent_list"}}' \
 	> "$tmp/mixed.json"
 assert_equal "$("$tmp/probe" "$tmp/mixed.sock" \
 	"$tmp/mixed.json" "$tmp/mixed.json")" \
-	"$(printf '!1 ✓1 …2 ○1 ?2\n 1 ⠀1 …2 ○1 ?2')"
+	"$(printf '!1 1 …2 ○1 ?2\n 1 %s1 …2 ○1 ?2' "$done_blank")"
 
 printf '%s\n' \
 	'{"result":{"type":"agent_list","agents":[{"agent_status":"working"}]}}' \
 	> "$tmp/working.json"
 assert_equal "$("$tmp/probe" "$tmp/reset.sock" "$tmp/mixed.json" \
 	"$tmp/working.json" "$tmp/mixed.json")" \
-	"$(printf '!1 ✓1 …2 ○1 ?2\n…1\n!1 ✓1 …2 ○1 ?2')"
+	"$(printf '!1 1 …2 ○1 ?2\n…1\n!1 1 …2 ○1 ?2')"
 
 printf '%s\n' '{"result":{"agents":[],"type":"agent_list"}}' \
 	> "$tmp/empty.json"
