@@ -142,24 +142,27 @@ The Claude, OpenAI, and Grok components hide missing or expired windows. Values
 update only when the corresponding CLI receives new usage data, so they can
 remain visible while offline until the provider-reported reset time.
 
-OpenCode Go does not provide a public usage API. Opening the AI usage report
-starts one helper request. There is no background polling. The helper reads the
-rolling, weekly, and monthly windows from the authenticated workspace dashboard
-and stores only their percentages and reset times in
+OpenCode Go provides a usage API. Opening the AI usage report starts one helper
+request. There is no background polling. The helper reads the rolling, weekly,
+and monthly windows from the API. It stores only their percentages and reset
+times in
 `${XDG_CACHE_HOME:-$HOME/.cache}/slstatus/opencode-go-usage-v1`.
 
-Create `${XDG_CONFIG_HOME:-$HOME/.config}/slstatus/opencode-go.json` with mode
-`600`:
+Set the API key before you start `slstatus`:
+
+    export OPENCODE_API_KEY="..."
+
+You can put this line in `.bashrc` if your desktop session starts from Bash.
+As an alternative, create
+`${XDG_CONFIG_HOME:-$HOME/.config}/slstatus/opencode-go.json` with mode `600`:
 
     {
-        "workspaceId": "wrk_...",
-        "authCookie": "..."
+        "apiKey": "..."
     }
 
-The workspace ID is in the Go dashboard URL. Get the `auth` cookie value from
-the browser developer tools while signed in. Do not commit or share this file.
-The cookie grants access to the OpenCode account until it expires.
+Do not commit or share the API key. The helper sends it only as a bearer token
+to `https://opencode.ai/zen/go/v1/usage`.
 
 The helper has a ten-second request limit. It removes its cache after a network,
-authentication, configuration, or parsing failure. In these cases, the report
+authentication, configuration, or response failure. In these cases, the report
 shows OpenCode Go as unavailable and continues to run.
