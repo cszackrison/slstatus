@@ -4,4 +4,4 @@
 
 exec st -c SlstatusPopup -n slstatus-calendar -t "Calendar" \
 	-g "68x10" \
-	-e sh -c 'cal -3; exec tail -f /dev/null'
+	-e sh -c 'cal --color=always -3; exec tail -f /dev/null'
