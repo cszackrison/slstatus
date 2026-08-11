@@ -19,7 +19,7 @@ printf '%s\n' \
 	> "$tmp/mixed.json"
 assert_equal "$("$tmp/probe" "$tmp/mixed.sock" \
 	"$tmp/mixed.json" "$tmp/mixed.json")" \
-	"$(printf '!1 ✓1 …2 ○1 ?2\n 1  1 …2 ○1 ?2')"
+	"$(printf '!1 ✓1 …2 ○1 ?2\n 1 ⠀1 …2 ○1 ?2')"
 
 printf '%s\n' \
 	'{"result":{"type":"agent_list","agents":[{"agent_status":"working"}]}}' \

@@ -570,7 +570,7 @@ herdr_status(const char *configured_path)
 	if (counts.blocked || counts.done) {
 		if (attention_frame) {
 			blocked_symbol = " ";
-			done_symbol = " ";
+			done_symbol = "⠀";
 		}
 		attention_frame = !attention_frame;
 	} else {

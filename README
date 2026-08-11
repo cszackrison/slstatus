@@ -82,8 +82,9 @@ for each agent state: `!` blocked, `✓` done, `…` working, `○` idle, and `?
 unknown. Zero counts are omitted.
 
 Blocked and done agents need attention. While either state is present, its `!`
-or `✓` icon blinks on and off on each status refresh. The count remains visible
-and the blank frame preserves the icon's width, so the rest of the status does
+or `✓` icon blinks on and off on each status refresh. The count remains visible.
+The hidden `!` uses a normal space. The hidden `✓` uses a narrower blank
+character that matches the check mark width. Thus, the rest of the status does
 not move. The `○N` idle/parked count remains steadily visible. For example:
 
     Herdr !1 ✓1 …2 ○1
