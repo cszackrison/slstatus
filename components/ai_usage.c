@@ -20,8 +20,6 @@
 
 #define CODEX_RESCAN_SECONDS 60
 #define USAGE_LOG_READ_LIMIT (2 * 1024 * 1024)
-#define OPENCODE_REFRESH_SECONDS (60 * 60)
-#define OPENCODE_CACHE_MAX_AGE (OPENCODE_REFRESH_SECONDS + 5 * 60)
 #define USAGE_BAR_WIDTH 5
 
 #ifndef SLSTATUS_LIBEXEC
@@ -53,8 +51,6 @@ static char grok_log[PATH_MAX];
 static off_t grok_offset;
 static dev_t grok_device;
 static ino_t grok_inode;
-static pid_t opencode_updater = -1;
-static time_t opencode_next_refresh;
 
 static void
 print_usage_line(const char *icon, const char *provider, const char *usage)
@@ -609,8 +605,7 @@ read_opencode_cache(const char *path, struct usage_snapshot *snapshot)
 	fclose(fp);
 
 	now = time(NULL);
-	if (!parse_cache_time(fetched, &fetched_at) || fetched_at > now + 60 ||
-	    now - fetched_at > OPENCODE_CACHE_MAX_AGE)
+	if (!parse_cache_time(fetched, &fetched_at) || fetched_at > now + 60)
 		return 0;
 	if (parse_cache_token(five_used, &used) &&
 	    parse_cache_time(five_reset, &resets_at)) {
@@ -718,28 +713,6 @@ format_usage(struct usage_snapshot *snapshot)
 	return used ? buf : NULL;
 }
 
-static void
-start_opencode_update(time_t now)
-{
-	pid_t result;
-
-	if (opencode_updater > 0) {
-		result = waitpid(opencode_updater, NULL, WNOHANG);
-		if (result == 0)
-			return;
-		if (result == opencode_updater || (result < 0 && errno != EINTR))
-			opencode_updater = -1;
-	}
-	if (opencode_updater > 0 || now < opencode_next_refresh)
-		return;
-	opencode_next_refresh = now + OPENCODE_REFRESH_SECONDS;
-	opencode_updater = fork();
-	if (opencode_updater == 0) {
-		execl(OPENCODE_HELPER, OPENCODE_HELPER, (char *)NULL);
-		_exit(127);
-	}
-}
-
 const char *
 claude_subscription_usage(const char *cache_path)
 {
@@ -826,11 +799,8 @@ opencode_go_usage(const char *cache_path)
 {
 	char path[PATH_MAX];
 	struct usage_snapshot snapshot;
-	time_t now;
 
-	now = time(NULL);
 	if (!cache_path) {
-		start_opencode_update(now);
 		if (!default_path(path, sizeof(path), "XDG_CACHE_HOME", ".cache",
 		                  "slstatus/opencode-go-usage-v1"))
 			return NULL;
@@ -840,6 +810,22 @@ opencode_go_usage(const char *cache_path)
 		return NULL;
 
 	return format_usage(&snapshot);
+}
+
+static void
+refresh_opencode_usage(void)
+{
+	pid_t updater;
+
+	updater = fork();
+	if (updater < 0)
+		return;
+	if (updater == 0) {
+		execl(OPENCODE_HELPER, OPENCODE_HELPER, (char *)NULL);
+		_exit(127);
+	}
+	while (waitpid(updater, NULL, 0) < 0 && errno == EINTR)
+		;
 }
 
 void
@@ -853,7 +839,8 @@ ai_usage_report(void)
 	usage = openai_subscription_usage(NULL);
 	print_usage_line("", "OpenAI", usage);
 	usage = grok_subscription_usage(NULL);
-	print_usage_line("", "Grok", usage);
+	print_usage_line("", "Grok", usage);
+	refresh_opencode_usage();
 	usage = default_path(path, sizeof(path), "XDG_CACHE_HOME", ".cache",
 	                     "slstatus/opencode-go-usage-v1") ?
 	        opencode_go_usage(path) : NULL;

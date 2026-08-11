@@ -104,10 +104,11 @@ alongside them, for example `5hr [███▊░] 75%`. A fuller bar means more
 remains.
 
 The configured status bar keeps these provider segments hidden. Left-click the
-`AGENTS` segment to show all four providers in a small `st` popup below the
-top-right status area. The popup closes when it loses focus. It reads local data
-only and does not start an extra provider request. Run `slstatus -u` to print the
-same four-row report in a terminal.
+`󰚩` agent segment to show all four providers in a small `st` popup below the
+top-right status area. The popup uses the normal `st` font and closes when it
+loses focus. Opening it refreshes OpenCode Go once, then shows all four
+providers. Run `slstatus -u` to refresh and print the same four-row report in a
+terminal.
 
 Left-click the date to show `cal -3` in the same type of popup. DWM places both
 popups at the top right before their first visible frame.
@@ -139,10 +140,11 @@ The Claude, OpenAI, and Grok components hide missing or expired windows. Values
 update only when the corresponding CLI receives new usage data, so they can
 remain visible while offline until the provider-reported reset time.
 
-OpenCode Go does not provide a public usage API. Its component starts a helper
-once per hour. The helper reads the rolling, weekly, and monthly windows from
-the authenticated workspace dashboard and stores only their percentages and
-reset times in `${XDG_CACHE_HOME:-$HOME/.cache}/slstatus/opencode-go-usage-v1`.
+OpenCode Go does not provide a public usage API. Opening the AI usage report
+starts one helper request. There is no background polling. The helper reads the
+rolling, weekly, and monthly windows from the authenticated workspace dashboard
+and stores only their percentages and reset times in
+`${XDG_CACHE_HOME:-$HOME/.cache}/slstatus/opencode-go-usage-v1`.
 
 Create `${XDG_CONFIG_HOME:-$HOME/.config}/slstatus/opencode-go.json` with mode
 `600`:
@@ -157,6 +159,5 @@ the browser developer tools while signed in. Do not commit or share this file.
 The cookie grants access to the OpenCode account until it expires.
 
 The helper has a ten-second request limit. It removes its cache after a network,
-authentication, configuration, or parsing failure. The component also rejects
-cache data older than 65 minutes. In all these cases, slstatus hides the OpenCode
-Go segment and continues to run.
+authentication, configuration, or parsing failure. In these cases, the report
+shows OpenCode Go as unavailable and continues to run.

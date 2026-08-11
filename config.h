@@ -16,7 +16,7 @@ static const char unknown_str[] = "n/a";
 /* output formats */
 static const struct arg args[] = {
 	/* function, format, argument */
-	{ herdr_status, "\x05" PAD "AGENTS %s ", NULL, 1 },
+	{ herdr_status, "\x05" PAD "󰚩 %s ", NULL, 1 },
 	/*{ disk_free, " %.5s GiB | ", "/" },
 	{ ipv4, "E: %s | ", "enp9s0" },*/
 	/*{ wifi_perc, "W: (%3s%% on ", "wlp8s0" },

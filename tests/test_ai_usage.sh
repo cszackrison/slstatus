@@ -4,7 +4,9 @@ set -eu
 tmp=$(mktemp -d /tmp/slstatus-ai-usage.XXXXXX)
 trap 'rm -rf "$tmp"' EXIT HUP INT TERM
 
+mkdir -p "$tmp/libexec"
 cc -I. -D_DEFAULT_SOURCE -std=c99 -pedantic -Wall -Wextra -Os \
+	"-DSLSTATUS_LIBEXEC=\"$tmp/libexec\"" \
 	-o "$tmp/probe" tests/ai_usage_probe.c components/ai_usage.c util.c
 
 assert_equal() {
@@ -17,7 +19,7 @@ assert_equal() {
 now=$(date +%s)
 future=$((now + 3600))
 past=$((now - 1))
-stale=$((now - 3901))
+future_fetch=$((now + 61))
 
 printf 'v1\t25.4\t%s\t96\t%s\n' "$future" "$future" \
 	> "$tmp/claude"
@@ -43,7 +45,7 @@ assert_equal "$("$tmp/probe" opencode "$tmp/opencode")" \
 	"5hr [███▊░] 75% wk [▎░░░░] 4% mo [██░░░] 40%"
 
 printf 'v1\t%s\t25.4\t%s\t-\t-\t-\t-\n' \
-	"$stale" "$future" > "$tmp/opencode"
+	"$future_fetch" "$future" > "$tmp/opencode"
 assert_equal "$("$tmp/probe" opencode "$tmp/opencode")" "NULL"
 
 mkdir -p "$tmp/sessions/2026/07/21"
@@ -106,5 +108,23 @@ assert_equal "$("$tmp/probe" claude \
 	"5hr [███▊░] 75% wk [▎░░░░] 4%"
 assert_equal "$(stat -c %a "$cache_root/slstatus")" "700"
 assert_equal "$(stat -c %a "$cache_root/slstatus/claude-usage-v1")" "600"
+
+printf '%s\n' \
+	'#!/bin/sh' \
+	'set -eu' \
+	'cache_dir=${XDG_CACHE_HOME}/slstatus' \
+	'mkdir -p "$cache_dir"' \
+	'now=$(date +%s)' \
+	'future=$((now + 3600))' \
+	'printf "v1\\t%s\\t20\\t%s\\t-\\t-\\t-\\t-\\n" "$now" "$future" > "$cache_dir/opencode-go-usage-v1"' \
+	> "$tmp/libexec/opencode-go-usage-cache"
+chmod 755 "$tmp/libexec/opencode-go-usage-cache"
+report_cache=$tmp/report-cache
+report=$(XDG_CACHE_HOME="$report_cache" CODEX_HOME="$tmp/empty-codex" \
+	GROK_HOME="$tmp/empty-grok" "$tmp/probe" report)
+case $report in
+	*"OpenCode Go"*"5hr [████░] 80%"*) ;;
+	*) printf 'report did not refresh OpenCode Go:\n%s\n' "$report" >&2; exit 1 ;;
+esac
 
 printf 'ai usage tests passed\n'

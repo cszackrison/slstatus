@@ -3,5 +3,5 @@
 # Show locally cached AI subscription usage in a small terminal popup.
 
 exec st -c SlstatusPopup -n slstatus-usage -t "AI usage" \
-	-f "NotoSans Nerd Font:size=10" -g "86x6" \
+	-g "68x6" \
 	-e sh -c 'slstatus -u; exec tail -f /dev/null'
