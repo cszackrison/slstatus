@@ -1,10 +1,20 @@
 /* See LICENSE file for copyright and license details. */
 #include <ctype.h>
+#include <errno.h>
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
+#include <sys/types.h>
+#include <sys/wait.h>
+#include <unistd.h>
 
 #include "../util.h"
+
+#ifndef SLSTATUS_LIBEXEC
+#define SLSTATUS_LIBEXEC "/usr/local/libexec/slstatus"
+#endif
+
+#define AUDIO_DEVICE_MENU_HELPER SLSTATUS_LIBEXEC "/audio-device-menu"
 
 static int
 get_input_source(char *source, size_t size)
@@ -127,12 +137,36 @@ source_volume(const char *source)
 	return volume;
 }
 
+static void
+input_menu(void)
+{
+	pid_t child, launcher;
+
+	if ((launcher = fork()) < 0)
+		return;
+	if (launcher == 0) {
+		child = fork();
+		if (child == 0) {
+			execl(AUDIO_DEVICE_MENU_HELPER, AUDIO_DEVICE_MENU_HELPER,
+			      "source", (char *)NULL);
+			_exit(127);
+		}
+		_exit(child < 0 ? 127 : 0);
+	}
+	while (waitpid(launcher, NULL, 0) < 0 && errno == EINTR)
+		;
+}
+
 void
 mic_click(int button)
 {
 	char cmd[512], source[256];
 	int volume;
 
+	if (button == 1) {
+		input_menu();
+		return;
+	}
 	if (!get_input_source(source, sizeof(source)))
 		return;
 
@@ -141,12 +175,12 @@ mic_click(int button)
 		(void)system(cmd);
 		return;
 	}
-	if (button != 1 && button != 3)
+	if (button != 4 && button != 5)
 		return;
 
 	if ((volume = source_volume(source)) < 0)
 		return;
-	volume += button == 1 ? 10 : -10;
+	volume += button == 4 ? 5 : -5;
 	if (volume < 0)
 		volume = 0;
 	else if (volume > 100)

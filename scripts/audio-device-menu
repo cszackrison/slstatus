@@ -1,0 +1,89 @@
+#!/bin/sh
+
+set -eu
+
+case ${1-} in
+sink)
+	device_label=Output
+	list_kind=sinks
+	stream_kind=sink-inputs
+	move_command=move-sink-input
+	;;
+source)
+	device_label=Input
+	list_kind=sources
+	stream_kind=source-outputs
+	move_command=move-source-output
+	;;
+*)
+	printf 'usage: %s sink|source\n' "$0" >&2
+	exit 2
+	;;
+esac
+
+lock_base=${XDG_RUNTIME_DIR:-/tmp}
+lock_file=$lock_base/slstatus-audio-menu.lock
+exec 9> "$lock_file"
+flock -n 9 || exit 0
+
+default=$(LC_ALL=C pactl "get-default-$1")
+choices=$(
+	LC_ALL=C pactl list "$list_kind" |
+	awk -v current="$default" -v kind="$1" '
+		function emit() {
+			if (name == "" || (kind == "source" && name ~ /\.monitor$/))
+				return
+			label = description == "" ? name : description
+			printf "%s\t%s%s\n", name, label,
+			       name == current ? " [current]" : ""
+		}
+		$1 == "Name:" {
+			emit()
+			name = $2
+			description = ""
+			next
+		}
+		$1 == "Description:" {
+			$1 = ""
+			sub(/^[[:space:]]+/, "")
+			description = $0
+		}
+		END { emit() }
+	'
+)
+
+[ -n "$choices" ] || exit 0
+menu_dir=$(mktemp -d /tmp/slstatus-audio-menu.XXXXXX)
+trap 'rm -rf "$menu_dir"' EXIT HUP INT TERM
+menu_file=$menu_dir/choices
+selection_file=$menu_dir/selection
+printf '%s\n' "$choices" |
+awk -F '\t' '{ printf "%d. %s\n", NR, $2 }' > "$menu_file"
+
+lines=$(wc -l < "$menu_file")
+[ "$lines" -gt 10 ] && lines=10
+terminal=${SLSTATUS_TERMINAL:-st}
+"$terminal" -A 1 -c SlstatusPopup -n slstatus-audio -t "$device_label device" \
+	-g "68x$((lines + 1))" \
+	-e sh -c '
+		dmenu -w "$WINDOWID" -i -l "$1" -p "$2:" \
+			< "$3" > "$4"
+	' sh "$lines" "$device_label" "$menu_file" "$selection_file" || :
+[ -s "$selection_file" ] || exit 0
+choice=$(cat "$selection_file")
+number=${choice%%.*}
+case $number in
+*[!0-9]*|'') exit 0 ;;
+esac
+device=$(
+	printf '%s\n' "$choices" |
+	awk -F '\t' -v number="$number" 'NR == number { print $1; exit }'
+)
+[ -n "$device" ] || exit 0
+
+pactl "set-default-$1" "$device"
+LC_ALL=C pactl list short "$stream_kind" |
+awk '{ print $1 }' |
+while IFS= read -r stream; do
+	[ -n "$stream" ] && pactl "$move_command" "$stream" "$device" || :
+done

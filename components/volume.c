@@ -1,8 +1,11 @@
 /* See LICENSE file for copyright and license details. */
 #include <err.h>
+#include <errno.h>
 #include <fcntl.h>
 #include <sys/soundcard.h>
 #include <sys/ioctl.h>
+#include <sys/types.h>
+#include <sys/wait.h>
 #include <ctype.h>
 #include <stdio.h>
 #include <stdlib.h>
@@ -10,6 +13,12 @@
 #include <unistd.h>
 
 #include "../util.h"
+
+#ifndef SLSTATUS_LIBEXEC
+#define SLSTATUS_LIBEXEC "/usr/local/libexec/slstatus"
+#endif
+
+#define AUDIO_DEVICE_MENU_HELPER SLSTATUS_LIBEXEC "/audio-device-menu"
 
 const char *
 vol_perc(const char *card)
@@ -127,22 +136,46 @@ sink_volume(void)
 	return volume;
 }
 
+static void
+output_menu(void)
+{
+	pid_t child, launcher;
+
+	if ((launcher = fork()) < 0)
+		return;
+	if (launcher == 0) {
+		child = fork();
+		if (child == 0) {
+			execl(AUDIO_DEVICE_MENU_HELPER, AUDIO_DEVICE_MENU_HELPER,
+			      "sink", (char *)NULL);
+			_exit(127);
+		}
+		_exit(child < 0 ? 127 : 0);
+	}
+	while (waitpid(launcher, NULL, 0) < 0 && errno == EINTR)
+		;
+}
+
 void
 volume_click(int button)
 {
 	char cmd[64];
 	int volume;
 
+	if (button == 1) {
+		output_menu();
+		return;
+	}
 	if (button == 2) {
 		(void)system("pactl set-sink-mute @DEFAULT_SINK@ toggle");
 		return;
 	}
-	if (button != 1 && button != 3)
+	if (button != 4 && button != 5)
 		return;
 
 	if ((volume = sink_volume()) < 0)
 		return;
-	volume += button == 1 ? 10 : -10;
+	volume += button == 4 ? 5 : -5;
 	if (volume < 0)
 		volume = 0;
 	else if (volume > 100)
