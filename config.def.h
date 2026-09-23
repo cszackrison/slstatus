@@ -12,14 +12,6 @@ static const char unknown_str[] = "n/a";
 /*
  * function             description                     argument
  *
- * claude_subscription_usage
- *                      Claude subscription remaining   cache file or NULL
- * openai_subscription_usage
- *                      Codex subscription remaining    sessions dir or NULL
- * grok_subscription_usage
- *                      Grok subscription remaining     log file or NULL
- * opencode_go_usage
- *                      OpenCode Go remaining           cache file or NULL
  * herdr_status         Herdr agent state counts        socket path or NULL
  * battery_perc         battery percentage              battery name
  * battery_power        battery power usage             battery name

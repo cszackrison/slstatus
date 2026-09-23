@@ -1,0 +1,36 @@
+#!/usr/bin/python3
+
+"""Keep CodexBar cards intact, with contrasting filled and empty bar cells."""
+
+import re
+import subprocess
+import sys
+
+
+BAR = re.compile(r"\[ ([━ ]{12,}) \]")
+
+
+def contrast_bar(match):
+    cells = match.group(1).replace("━", "█").replace(" ", "░")
+    return f"[ {cells} ]"
+
+
+def main():
+    try:
+        result = subprocess.run(
+            ["codexbar", "cards", "--no-color"],
+            capture_output=True,
+            text=True,
+            check=False,
+        )
+    except FileNotFoundError:
+        print("slstatus: codexbar is unavailable", file=sys.stderr)
+        return 127
+
+    sys.stdout.write(BAR.sub(contrast_bar, result.stdout))
+    sys.stderr.write(result.stderr)
+    return result.returncode
+
+
+if __name__ == "__main__":
+    sys.exit(main())

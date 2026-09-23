@@ -7,11 +7,18 @@
 #include <stdlib.h>
 #include <string.h>
 #include <time.h>
+#include <unistd.h>
 #include <X11/Xlib.h>
 
 #include "arg.h"
 #include "slstatus.h"
 #include "util.h"
+
+#ifndef SLSTATUS_LIBEXEC
+#define SLSTATUS_LIBEXEC "/usr/local/libexec/slstatus"
+#endif
+
+#define AI_USAGE_REPORT_HELPER SLSTATUS_LIBEXEC "/ai-usage-report"
 
 struct arg {
 	const char *(*func)();
@@ -85,8 +92,13 @@ main(int argc, char *argv[])
 
 	setlocale(LC_ALL, "");
 	if (uflag) {
-		ai_usage_report();
-		return 0;
+		const char *report = getenv("SLSTATUS_AI_USAGE_REPORT");
+		if (!report || !*report)
+			report = AI_USAGE_REPORT_HELPER;
+		execl(report, report, (char *)NULL);
+		fprintf(stderr, "slstatus: AI usage report is unavailable: %s\n",
+		        strerror(errno));
+		return 127;
 	}
 
 	memset(&act, 0, sizeof(act));

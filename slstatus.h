@@ -1,11 +1,6 @@
 /* See LICENSE file for copyright and license details. */
 
-/* AI subscription usage */
-const char *claude_subscription_usage(const char *);
-const char *openai_subscription_usage(const char *);
-const char *grok_subscription_usage(const char *);
-const char *opencode_go_usage(const char *);
-void ai_usage_report(void);
+/* AI usage popup */
 void ai_usage_menu(int);
 
 /* Herdr */

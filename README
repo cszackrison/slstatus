@@ -28,7 +28,7 @@ Features
 - Volume percentage (OSS/ALSA)
 - WiFi signal percentage and ESSID
 - Razer Basilisk X HyperSpeed DPI and battery status
-- Claude, OpenAI, Grok, and OpenCode Go subscription usage remaining
+- AI usage popup powered by CodexBar CLI
 - Herdr agent states with an animated attention indicator
 - Click controls for audio devices, volume, microphone, and mouse DPI when used
   with the clickable-status patch in this dwm configuration
@@ -107,71 +107,28 @@ argument it checks `HERDR_SOCKET_PATH`, then
 `$HOME/.config/herdr/herdr.sock`.
 
 
-AI subscription usage
----------------------
-The Claude, OpenAI, Grok, and OpenCode Go components display remaining
-subscription capacity as five-cell progress bars with the exact percentage
-alongside them, for example `5hr [███▊░] 75%`. A fuller bar means more capacity
-remains.
+AI usage
+--------
+Install the [CodexBar Linux CLI](https://github.com/steipete/CodexBar#cli-tarballs-macoslinux)
+and make `codexbar` available on your desktop session's `PATH`. Configure the
+providers you want with `codexbar config enable --provider <id>` and sign in
+using each provider's supported source. For example, the provider IDs for the
+previous four-row report are `claude`, `codex`, `grok`, and `opencodego`.
+OpenCode Go needs the Go API key from the OpenCode Console. Signing in to
+OpenCode v2 with Console OAuth alone does not provide that key to CodexBar.
+Store the Go key with `codexbar config set-api-key --provider opencodego --stdin`
+or use `OPENCODE_API_KEY`; then check it with
+`codexbar usage --provider opencodego --source api`.
 
-The configured status bar keeps these provider segments hidden. Left-click the
-`󰚩` agent segment to show all four providers in a small `st` popup below the
-top-right status area. The popup uses the normal `st` font and closes when it
-loses focus. Opening it refreshes OpenCode Go once, then shows all four
-providers. Run `slstatus -u` to refresh and print the same four-row report in a
-terminal.
+On Arch Linux, install the CLI with `yay -S codexbar-cli`.
+
+Left-click the `󰚩` agent segment to open CodexBar's full cards in an `st`
+popup. The bar cells use solid `█` for remaining capacity and shaded `░` for
+used capacity, making the filled and empty portions distinct. OpenCode Go's
+card includes its five-hour, weekly, and monthly windows. The popup closes
+when it loses focus. Run `slstatus -u` to print the same report in a terminal.
+CodexBar fetches usage when the popup opens; slstatus only changes the bar
+glyphs and does not poll providers in the status loop.
 
 Left-click the date to show `cal -3` in the same type of popup. DWM places both
 popups at the top right before their first visible frame.
-
-OpenAI usage is read from the newest Codex rollout under
-`$CODEX_HOME/sessions` (or `~/.codex/sessions`). Codex writes the same rate-limit
-snapshot used by its own interface after a response. Because the rollout format
-is internal to Codex, an incompatible future format is treated as unavailable.
-
-Grok usage is read from the latest available subscription snapshot in
-`$GROK_HOME/logs/unified.jsonl` (or `~/.grok/logs/unified.jsonl`). The Grok CLI
-writes its used percentage and weekly reset information to this local log. The
-component reads new log data instead of contacting an xAI server.
-
-Claude Code exposes subscription rate limits to its custom status-line command
-but does not persist them in its normal stats cache. Install this project's
-helper and configure it as the Claude Code status line:
-
-    "statusLine": {
-        "type": "command",
-        "command": "/usr/local/libexec/slstatus/claude-usage-cache"
-    }
-
-The helper requires `jq`, preserves the `[user@host directory]` Claude footer,
-and writes only the two percentages and reset times to
-`${XDG_CACHE_HOME:-$HOME/.cache}/slstatus/claude-usage-v1`.
-
-The Claude, OpenAI, and Grok components hide missing or expired windows. Values
-update only when the corresponding CLI receives new usage data, so they can
-remain visible while offline until the provider-reported reset time.
-
-OpenCode Go provides a usage API. Opening the AI usage report starts one helper
-request. There is no background polling. The helper reads the rolling, weekly,
-and monthly windows from the API. It stores only their percentages and reset
-times in
-`${XDG_CACHE_HOME:-$HOME/.cache}/slstatus/opencode-go-usage-v1`.
-
-Set the API key before you start `slstatus`:
-
-    export OPENCODE_API_KEY="..."
-
-You can put this line in `.bashrc` if your desktop session starts from Bash.
-As an alternative, create
-`${XDG_CONFIG_HOME:-$HOME/.config}/slstatus/opencode-go.json` with mode `600`:
-
-    {
-        "apiKey": "..."
-    }
-
-Do not commit or share the API key. The helper sends it only as a bearer token
-to `https://opencode.ai/zen/go/v1/usage`.
-
-The helper has a ten-second request limit. It removes its cache after a network,
-authentication, configuration, or response failure. In these cases, the report
-shows OpenCode Go as unavailable and continues to run.

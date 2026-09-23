@@ -1,7 +1,7 @@
 #!/bin/sh
 
-# Show locally cached AI subscription usage in a small terminal popup.
+# Show CodexBar's current usage in a small terminal popup.
 
 exec st -c SlstatusPopup -n slstatus-usage -t "AI usage" \
-	-g "68x6" \
+	-g "82x34" \
 	-e sh -c 'slstatus -u; exec tail -f /dev/null'

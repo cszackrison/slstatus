@@ -35,7 +35,6 @@ all: slstatus
 test: all
 	sh tests/test_audio_device_menu.sh
 	sh tests/test_ai_usage.sh
-	sh tests/test_opencode_go_cache.sh
 	sh tests/test_herdr_status.sh
 
 slstatus: slstatus.o $(COM:=.o) $(REQ:=.o)
@@ -68,20 +67,17 @@ install: all
 	cp -f slstatus "$(DESTDIR)$(PREFIX)/bin"
 	chmod 755 "$(DESTDIR)$(PREFIX)/bin/slstatus"
 	mkdir -p "$(DESTDIR)$(PREFIX)/libexec/slstatus"
-	cp -f scripts/claude-usage-cache \
-		"$(DESTDIR)$(PREFIX)/libexec/slstatus/claude-usage-cache"
-	cp -f scripts/opencode-go-usage-cache \
-		"$(DESTDIR)$(PREFIX)/libexec/slstatus/opencode-go-usage-cache"
 	cp -f scripts/ai-usage-menu \
 		"$(DESTDIR)$(PREFIX)/libexec/slstatus/ai-usage-menu"
+	cp -f scripts/ai-usage-report \
+		"$(DESTDIR)$(PREFIX)/libexec/slstatus/ai-usage-report"
 	cp -f scripts/calendar-popup \
 		"$(DESTDIR)$(PREFIX)/libexec/slstatus/calendar-popup"
 	cp -f scripts/audio-device-menu \
 		"$(DESTDIR)$(PREFIX)/libexec/slstatus/audio-device-menu"
 	chmod 755 \
-		"$(DESTDIR)$(PREFIX)/libexec/slstatus/claude-usage-cache" \
-		"$(DESTDIR)$(PREFIX)/libexec/slstatus/opencode-go-usage-cache" \
 		"$(DESTDIR)$(PREFIX)/libexec/slstatus/ai-usage-menu" \
+		"$(DESTDIR)$(PREFIX)/libexec/slstatus/ai-usage-report" \
 		"$(DESTDIR)$(PREFIX)/libexec/slstatus/calendar-popup" \
 		"$(DESTDIR)$(PREFIX)/libexec/slstatus/audio-device-menu"
 	mkdir -p "$(DESTDIR)$(MANPREFIX)/man1"
@@ -90,9 +86,8 @@ install: all
 
 uninstall:
 	rm -f "$(DESTDIR)$(PREFIX)/bin/slstatus"
-	rm -f "$(DESTDIR)$(PREFIX)/libexec/slstatus/claude-usage-cache"
-	rm -f "$(DESTDIR)$(PREFIX)/libexec/slstatus/opencode-go-usage-cache"
 	rm -f "$(DESTDIR)$(PREFIX)/libexec/slstatus/ai-usage-menu"
+	rm -f "$(DESTDIR)$(PREFIX)/libexec/slstatus/ai-usage-report"
 	rm -f "$(DESTDIR)$(PREFIX)/libexec/slstatus/calendar-popup"
 	rm -f "$(DESTDIR)$(PREFIX)/libexec/slstatus/audio-device-menu"
 	rm -f "$(DESTDIR)$(MANPREFIX)/man1/slstatus.1"

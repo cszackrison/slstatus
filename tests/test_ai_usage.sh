@@ -3,128 +3,52 @@ set -eu
 
 tmp=$(mktemp -d /tmp/slstatus-ai-usage.XXXXXX)
 trap 'rm -rf "$tmp"' EXIT HUP INT TERM
+mkdir -p "$tmp/bin"
 
-mkdir -p "$tmp/libexec"
-cc -I. -D_DEFAULT_SOURCE -std=c99 -pedantic -Wall -Wextra -Os \
-	"-DSLSTATUS_LIBEXEC=\"$tmp/libexec\"" \
-	-o "$tmp/probe" tests/ai_usage_probe.c components/ai_usage.c util.c
+cat > "$tmp/bin/codexbar" <<'EOF'
+#!/bin/sh
+printf '%s\n' "$*" > "$ARGS_FILE"
+cat <<'CARDS'
+╭────────────────────────╮
+│ OpenCode Go [api]      │
+│ Weekly        87% left │
+│ [ ━━━━━━━━━━━        ] │
+│ Monthly       94% left │
+│ [ ━━━━━━━━━━━━━━━━━━━ ] │
+╰────────────────────────╯
+CARDS
+exit "${CODEXBAR_EXIT:-0}"
+EOF
+chmod 755 "$tmp/bin/codexbar"
 
-assert_equal() {
-	if [ "$1" != "$2" ]; then
-		printf 'expected: %s\nactual:   %s\n' "$2" "$1" >&2
-		exit 1
-	fi
-}
+output=$(ARGS_FILE="$tmp/args" PATH="$tmp/bin:$PATH" \
+	SLSTATUS_AI_USAGE_REPORT="$PWD/scripts/ai-usage-report" ./slstatus -u)
+printf '%s\n' "$output" | grep -F '│ OpenCode Go [api]      │' >/dev/null
+printf '%s\n' "$output" | grep -F '│ Weekly        87% left │' >/dev/null
+printf '%s\n' "$output" | grep -F '│ [ ███████████░░░░░░░ ] │' >/dev/null
+printf '%s\n' "$output" | grep -F '│ Monthly       94% left │' >/dev/null
+printf '%s\n' "$output" | grep -F '│ [ ███████████████████ ] │' >/dev/null
+[ "$(cat "$tmp/args")" = 'cards --no-color' ]
 
-now=$(date +%s)
-future=$((now + 3600))
-past=$((now - 1))
-future_fetch=$((now + 61))
+if ARGS_FILE="$tmp/args" CODEXBAR_EXIT=3 PATH="$tmp/bin:$PATH" \
+	SLSTATUS_AI_USAGE_REPORT="$PWD/scripts/ai-usage-report" \
+	./slstatus -u > /dev/null; then
+	printf 'slstatus did not pass through CodexBar failure\n' >&2
+	exit 1
+else
+	[ "$?" -eq 3 ]
+fi
 
-printf 'v1\t25.4\t%s\t96\t%s\n' "$future" "$future" \
-	> "$tmp/claude"
-assert_equal "$("$tmp/probe" claude "$tmp/claude")" \
-	"5hr [███▊░] 75% wk [▎░░░░] 4%"
-
-printf 'v1\t25.4\t%s\t96\t%s\n' "$past" "$future" \
-	> "$tmp/claude"
-assert_equal "$("$tmp/probe" claude "$tmp/claude")" \
-	"wk [▎░░░░] 4%"
-
-printf 'v1\t0\t%s\t100\t%s\n' "$future" "$future" \
-	> "$tmp/claude"
-assert_equal "$("$tmp/probe" claude "$tmp/claude")" \
-	"5hr [█████] 100% wk [░░░░░] 0%"
-
-printf 'not-a-cache\n' > "$tmp/claude"
-assert_equal "$("$tmp/probe" claude "$tmp/claude")" "NULL"
-
-printf 'v1\t%s\t25.4\t%s\t96\t%s\t60\t%s\n' \
-	"$now" "$future" "$future" "$future" > "$tmp/opencode"
-assert_equal "$("$tmp/probe" opencode "$tmp/opencode")" \
-	"5hr [███▊░] 75% wk [▎░░░░] 4% mo [██░░░] 40%"
-
-printf 'v1\t%s\t25.4\t%s\t-\t-\t-\t-\n' \
-	"$future_fetch" "$future" > "$tmp/opencode"
-assert_equal "$("$tmp/probe" opencode "$tmp/opencode")" "NULL"
-
-mkdir -p "$tmp/sessions/2026/07/21"
-rollout=$tmp/sessions/2026/07/21/rollout-test.jsonl
-printf '%s\n' \
-	'{"type":"event_msg","payload":{"type":"token_count","rate_limits":{"limit_id":"codex","primary":{"used_percent":14.0,"window_minutes":10080,"resets_at":9999999999},"secondary":null,"plan_type":"pro"}}}' \
-	> "$rollout"
-assert_equal "$("$tmp/probe" openai "$tmp/sessions")" \
-	"wk [████▎] 86%"
-
-printf '%s\n' \
-	'{"type":"event_msg","payload":{"type":"token_count","rate_limits":{"limit_id":"codex","primary":{"used_percent":25.4,"window_minutes":300,"resets_at":9999999999},"secondary":{"used_percent":96,"window_minutes":10080,"resets_at":9999999999},"plan_type":"plus"}}}' \
-	> "$rollout"
-assert_equal "$("$tmp/probe" openai "$tmp/sessions")" \
-	"5hr [███▊░] 75% wk [▎░░░░] 4%"
-
-printf '%s\n' \
-	'{"type":"event_msg","payload":{"type":"token_count","rate_limits":{"limit_id":"codex_spark","primary":{"used_percent":5,"window_minutes":10080,"resets_at":9999999999},"secondary":null,"plan_type":"pro"}}}' \
-	> "$rollout"
-assert_equal "$("$tmp/probe" openai "$tmp/sessions")" "NULL"
-
-printf '%s\n' \
-	'{"type":"event_msg","payload":{"type":"token_count","rate_limits":null}}' \
-	> "$rollout"
-assert_equal "$("$tmp/probe" openai "$tmp/sessions")" "NULL"
-
-grok_log=$tmp/grok.jsonl
-printf '%s\n' \
-	'{"ctx":{"config":{"creditUsagePercent":25.4,"currentPeriod":{"type":"USAGE_PERIOD_TYPE_WEEKLY","start":"2098-12-25T00:00:00Z","end":"2099-01-01T00:00:00.123456+00:00"}}}}' \
-	> "$grok_log"
-assert_equal "$("$tmp/probe" grok "$grok_log")" \
-	"wk [███▊░] 75%"
-
-printf '%s\n' \
-	'{"ctx":{"config":{"creditUsagePercent":25.4,"currentPeriod":{"type":"USAGE_PERIOD_TYPE_WEEKLY","end":"2099-01-01T00:00:00Z"}}}}' \
-	'{"ctx":{"config":{"creditUsagePercent":96,"currentPeriod":{"type":"USAGE_PERIOD_TYPE_WEEKLY","end":"2099-01-01T01:30:00+01:30"}}}}' \
-	> "$grok_log"
-assert_equal "$("$tmp/probe" grok "$grok_log")" \
-	"wk [▎░░░░] 4%"
-
-printf '%s\n' \
-	'{"ctx":{"config":{"creditUsagePercent":60,"currentPeriod":{"type":"USAGE_PERIOD_TYPE_MONTHLY","end":"2000-01-01T00:00:00Z"}}}}' \
-	> "$grok_log"
-assert_equal "$("$tmp/probe" grok "$grok_log")" "NULL"
-
-printf '%s\n' '{"ctx":{"config":{"creditUsagePercent":"bad"}}}' \
-	> "$grok_log"
-assert_equal "$("$tmp/probe" grok "$grok_log")" "NULL"
-
-cache_root=$tmp/cache
-output=$(printf '%s\n' \
-	"{\"rate_limits\":{\"five_hour\":{\"used_percentage\":25.4,\"resets_at\":$future},\"seven_day\":{\"used_percentage\":96,\"resets_at\":$future}}}" \
-	| XDG_CACHE_HOME="$cache_root" scripts/claude-usage-cache)
-case $output in
-	"["*"@"*" "*"]") ;;
-	*) printf 'unexpected Claude footer: %s\n' "$output" >&2; exit 1 ;;
-esac
-assert_equal "$("$tmp/probe" claude \
-	"$cache_root/slstatus/claude-usage-v1")" \
-	"5hr [███▊░] 75% wk [▎░░░░] 4%"
-assert_equal "$(stat -c %a "$cache_root/slstatus")" "700"
-assert_equal "$(stat -c %a "$cache_root/slstatus/claude-usage-v1")" "600"
-
-printf '%s\n' \
-	'#!/bin/sh' \
-	'set -eu' \
-	'cache_dir=${XDG_CACHE_HOME}/slstatus' \
-	'mkdir -p "$cache_dir"' \
-	'now=$(date +%s)' \
-	'future=$((now + 3600))' \
-	'printf "v1\\t%s\\t20\\t%s\\t-\\t-\\t-\\t-\\n" "$now" "$future" > "$cache_dir/opencode-go-usage-v1"' \
-	> "$tmp/libexec/opencode-go-usage-cache"
-chmod 755 "$tmp/libexec/opencode-go-usage-cache"
-report_cache=$tmp/report-cache
-report=$(XDG_CACHE_HOME="$report_cache" CODEX_HOME="$tmp/empty-codex" \
-	GROK_HOME="$tmp/empty-grok" "$tmp/probe" report)
-case $report in
-	*"OpenCode Go"*"5hr [████░] 80%"*) ;;
-	*) printf 'report did not refresh OpenCode Go:\n%s\n' "$report" >&2; exit 1 ;;
+if PATH=/nonexistent SLSTATUS_AI_USAGE_REPORT="$PWD/scripts/ai-usage-report" \
+	./slstatus -u > "$tmp/output" 2>&1; then
+	printf 'slstatus succeeded without CodexBar\n' >&2
+	exit 1
+else
+	[ "$?" -eq 127 ]
+fi
+case $(cat "$tmp/output") in
+	*'codexbar is unavailable'*) ;;
+	*) printf 'missing CodexBar error: %s\n' "$(cat "$tmp/output")" >&2; exit 1 ;;
 esac
 
 printf 'ai usage tests passed\n'
