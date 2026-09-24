@@ -1,7 +1,9 @@
 #!/usr/bin/python3
 
-"""Keep CodexBar cards intact, with contrasting filled and empty bar cells."""
+"""Show enabled CodexBar cards as each provider finishes."""
 
+import concurrent.futures
+import json
 import re
 import subprocess
 import sys
@@ -15,7 +17,7 @@ def contrast_bar(match):
     return f"[ {cells} ]"
 
 
-def main():
+def all_cards():
     try:
         result = subprocess.run(
             ["codexbar", "cards", "--no-color"],
@@ -30,6 +32,95 @@ def main():
     sys.stdout.write(BAR.sub(contrast_bar, result.stdout))
     sys.stderr.write(result.stderr)
     return result.returncode
+
+
+def placeholder(name):
+    label = f"Loading {name}..."[:33]
+    return "\n".join(("╭" + "─" * 35 + "╮", f"│ {label:<33} │", "╰" + "─" * 35 + "╯"))
+
+
+def failed_card(name, error):
+    detail = error.strip().splitlines()[-1] if error.strip() else "Request failed"
+    label = f"{name}: {detail}"[:33]
+    return "\n".join(("╭" + "─" * 35 + "╮", f"│ {label:<33} │", "╰" + "─" * 35 + "╯"))
+
+
+def render(cards):
+    lines = []
+    for start in range(0, len(cards), 2):
+        left = cards[start].splitlines()
+        if start + 1 == len(cards):
+            lines.extend(left)
+        else:
+            right = cards[start + 1].splitlines()
+            width = max(map(len, left))
+            for row in range(max(len(left), len(right))):
+                left_line = left[row] if row < len(left) else ""
+                right_line = right[row] if row < len(right) else ""
+                lines.append(left_line.ljust(width) + "  " + right_line)
+        lines.append("")
+    return "\n".join(lines).rstrip() + "\n"
+
+
+def fetch_card(provider):
+    return subprocess.run(
+        ["codexbar", "cards", "--provider", provider["provider"], "--no-color"],
+        capture_output=True,
+        text=True,
+        check=False,
+        timeout=45,
+    )
+
+
+def stream_cards():
+    try:
+        configured = subprocess.run(
+            ["codexbar", "config", "providers", "--json"],
+            capture_output=True,
+            text=True,
+            check=False,
+        )
+    except FileNotFoundError:
+        print("slstatus: codexbar is unavailable", file=sys.stderr)
+        return 127
+    if configured.returncode:
+        sys.stderr.write(configured.stderr)
+        return configured.returncode
+
+    providers = [item for item in json.loads(configured.stdout) if item["enabled"]]
+    if not providers:
+        print("No CodexBar providers are enabled.")
+        return 0
+
+    cards = [placeholder(item["displayName"]) for item in providers]
+    sys.stdout.write("\033[H\033[2J" + render(cards))
+    sys.stdout.flush()
+
+    failed = False
+    with concurrent.futures.ThreadPoolExecutor(max_workers=min(len(providers), 8)) as pool:
+        futures = {pool.submit(fetch_card, item): index for index, item in enumerate(providers)}
+        for future in concurrent.futures.as_completed(futures):
+            index = futures[future]
+            try:
+                result = future.result()
+            except (OSError, subprocess.TimeoutExpired) as error:
+                failed = True
+                cards[index] = failed_card(providers[index]["displayName"], str(error))
+            else:
+                if result.returncode or not result.stdout.strip():
+                    failed = True
+                    cards[index] = failed_card(providers[index]["displayName"], result.stderr)
+                else:
+                    cards[index] = BAR.sub(contrast_bar, result.stdout).strip()
+            sys.stdout.write("\033[H\033[2J" + render(cards))
+            sys.stdout.flush()
+    return 1 if failed else 0
+
+
+def main():
+    if sys.stdout.isatty():
+        return stream_cards()
+    return all_cards()
 
 
 if __name__ == "__main__":

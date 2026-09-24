@@ -35,6 +35,7 @@ all: slstatus
 test: all
 	sh tests/test_audio_device_menu.sh
 	sh tests/test_ai_usage.sh
+	python3 tests/test_ai_usage_stream.py
 	sh tests/test_herdr_status.sh
 
 slstatus: slstatus.o $(COM:=.o) $(REQ:=.o)

@@ -125,7 +125,8 @@ On Arch Linux, install the CLI with `yay -S codexbar-cli`.
 Left-click the `󰚩` agent segment to open CodexBar's full cards in an `st`
 popup. The bar cells use solid `█` for remaining capacity and shaded `░` for
 used capacity, making the filled and empty portions distinct. OpenCode Go's
-card includes its five-hour, weekly, and monthly windows. The popup closes
+card includes its five-hour, weekly, and monthly windows. Each card appears
+when its provider finishes. The popup closes
 when it loses focus. Run `slstatus -u` to print the same report in a terminal.
 CodexBar fetches usage when the popup opens; slstatus only changes the bar
 glyphs and does not poll providers in the status loop.
