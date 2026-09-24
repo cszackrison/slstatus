@@ -37,13 +37,14 @@ battery_state(const char *bat)
 		{ "Charging",    "+" },
 		{ "Discharging", "-" },
 		{ "Full",        "=" },
+		{ "Not charging", "=" },
 		{ "Unknown",     "/" },
 	};
 	size_t i;
-	char path[PATH_MAX], state[12];
+	char path[PATH_MAX], state[13];
 
 	snprintf(path, sizeof(path), "%s%s%s", "/sys/class/power_supply/", bat, "/status");
-	if (pscanf(path, "%12s", state) != 1) {
+	if (pscanf(path, "%12[^\n]", state) != 1) {
 		return NULL;
 	}
 

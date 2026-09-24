@@ -20,17 +20,17 @@ ipv4(const char *iface)
 	}
 
 	for (ifa = ifaddr; ifa != NULL; ifa = ifa->ifa_next) {
-		if (ifa->ifa_addr == NULL) {
+		if (ifa->ifa_addr == NULL || strcmp(ifa->ifa_name, iface) != 0 ||
+		    ifa->ifa_addr->sa_family != AF_INET) {
 			continue;
 		}
 		s = getnameinfo(ifa->ifa_addr, sizeof(struct sockaddr_in), host, NI_MAXHOST, NULL, 0, NI_NUMERICHOST);
-		if ((strcmp(ifa->ifa_name, iface) == 0) && (ifa->ifa_addr->sa_family == AF_INET)) {
-			if (s != 0) {
-				warnx("Failed to get IPv4 address for interface %s", iface);
-				return NULL;
-			}
-			return bprintf("%s", host);
+		freeifaddrs(ifaddr);
+		if (s != 0) {
+			warnx("Failed to get IPv4 address for interface %s", iface);
+			return NULL;
 		}
+		return bprintf("%s", host);
 	}
 
 	freeifaddrs(ifaddr);
@@ -51,17 +51,17 @@ ipv6(const char *iface)
 	}
 
 	for (ifa = ifaddr; ifa != NULL; ifa = ifa->ifa_next) {
-		if (ifa->ifa_addr == NULL) {
+		if (ifa->ifa_addr == NULL || strcmp(ifa->ifa_name, iface) != 0 ||
+		    ifa->ifa_addr->sa_family != AF_INET6) {
 			continue;
 		}
 		s = getnameinfo(ifa->ifa_addr, sizeof(struct sockaddr_in6), host, NI_MAXHOST, NULL, 0, NI_NUMERICHOST);
-		if ((strcmp(ifa->ifa_name, iface) == 0) && (ifa->ifa_addr->sa_family == AF_INET6)) {
-			if (s != 0) {
-				warnx("Failed to get IPv6 address for interface %s", iface);
-				return NULL;
-			}
-			return bprintf("%s", host);
+		freeifaddrs(ifaddr);
+		if (s != 0) {
+			warnx("Failed to get IPv6 address for interface %s", iface);
+			return NULL;
 		}
+		return bprintf("%s", host);
 	}
 
 	freeifaddrs(ifaddr);

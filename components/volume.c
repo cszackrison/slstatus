@@ -45,12 +45,14 @@ vol_perc(const char *card)
 				close(afd);
 				return NULL;
 			}
+			close(afd);
+			return bprintf("%d", v & 0xff);
 		}
 	}
 
 	close(afd);
-
-	return bprintf("%d", v & 0xff);
+	warnx("vol_perc: no 'vol' mixer device");
+	return NULL;
 }
 
 const char *

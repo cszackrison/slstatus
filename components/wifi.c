@@ -52,7 +52,8 @@ wifi_perc(const char *iface)
 		return NULL;
 
 	datastart = (datastart+(strlen(iface)+1));
-	sscanf(datastart + 1, " %*d   %d  %*d  %*d		  %*d	   %*d		%*d		 %*d	  %*d		 %*d", &cur);
+	if (sscanf(datastart + 1, " %*d   %d  %*d  %*d		  %*d	   %*d		%*d		 %*d	  %*d		 %*d", &cur) != 1)
+		return NULL;
 
 	perc = (float)cur / total * 100.0;
 
@@ -67,8 +68,13 @@ wifi_essid(const char *iface)
 	struct iwreq wreq;
 
 	memset(&wreq, 0, sizeof(struct iwreq));
-	wreq.u.essid.length = IW_ESSID_MAX_SIZE+1;
-	snprintf(wreq.ifr_name, sizeof(wreq.ifr_name), "%s", iface);
+	wreq.u.essid.length = IW_ESSID_MAX_SIZE;
+	if (snprintf(wreq.ifr_name, sizeof(wreq.ifr_name), "%s", iface) >=
+	    (int)sizeof(wreq.ifr_name)) {
+		if (sockfd != -1)
+			close(sockfd);
+		return NULL;
+	}
 
 	if (sockfd == -1) {
 		warn("Failed to get ESSID for interface %s", iface);
@@ -82,6 +88,8 @@ wifi_essid(const char *iface)
 	}
 
 	close(sockfd);
+	id[wreq.u.essid.length <= IW_ESSID_MAX_SIZE ?
+	   wreq.u.essid.length : IW_ESSID_MAX_SIZE] = '\0';
 
 	if (strcmp(id, "") == 0)
 		return NULL;
