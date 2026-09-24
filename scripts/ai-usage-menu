@@ -4,4 +4,4 @@
 
 exec st -c SlstatusPopup -n slstatus-usage -t "AI usage" \
 	-g "82x34" \
-	-e sh -c 'slstatus -u; exec tail -f /dev/null'
+	-e sh -c 'printf "Loading usage...\n"; slstatus -u; exec tail -f /dev/null'
